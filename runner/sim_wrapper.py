@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional
 
 import grpc
@@ -40,27 +41,27 @@ class SimWrapper:
         else:
             self._sim_cfg = None
 
-        self._channel = None
-        self._stub = None
-        self._connected = False
+        # long-lived channel
+        self._channel = grpc.insecure_channel(self._url)
+        self._stub = sim_server_pb2_grpc.SimServerStub(self._channel)
+        while True:
+            try:
+                pong = self._stub.Ping(empty_pb2.Empty(), timeout=self._timeout)
+                logger.info(f"Simulator ping response: {pong.msg}")
+                break
+            except Exception as exc:
+                logger.warning(f"Simulator ping failed, retrying...: {exc}")
+                time.sleep(1)
+        logger.info("Simulator service is alive")
+        self._connected = True
 
         self.init()
 
     # ---------------------------
     # Public API
     # ---------------------------
+
     def init(self):
-        # long-lived channel
-        self._channel = grpc.insecure_channel(self._url)
-        self._stub = sim_server_pb2_grpc.SimServerStub(self._channel)
-
-        # Ping
-        try:
-            pong = self._stub.Ping(empty_pb2.Empty(), timeout=300)
-            logger.info(f"Ping response: {pong.msg}")
-        except grpc.RpcError as e:
-            raise RuntimeError(f"Ping failed: {e.code().name} - {e.details()}") from e
-
         cfg_struct = Struct()
         cfg_struct.update(self._sim_cfg if self._sim_cfg is not None else {})
         config = config_pb2.Config(config=cfg_struct)
@@ -73,8 +74,6 @@ class SimWrapper:
         logger.info(f"Init response: {response.msg}")
         if not response.success:
             raise RuntimeError(f"Server Init returned success=false: {response.msg}")
-
-        self._connected = True
 
     def reset(
         self,

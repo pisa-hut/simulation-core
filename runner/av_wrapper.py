@@ -1,5 +1,6 @@
-from typing import Any, Optional
 import logging
+import time
+from typing import Any, Optional
 
 import grpc
 from google.protobuf.struct_pb2 import Struct
@@ -44,27 +45,27 @@ class AVWrapper:
         else:
             self._av_cfg = None
 
-        self._channel = None
-        self._stub = None
-        self._connected = False
+        # long-lived channel
+        self._channel = grpc.insecure_channel(self._url)
+        self._stub = av_server_pb2_grpc.AvServerStub(self._channel)
+        while True:
+            try:
+                pong = self._stub.Ping(empty_pb2.Empty(), timeout=self._timeout)
+                logger.info(f"AV ping response: {pong.msg}")
+                break
+            except Exception as exc:
+                logger.warning(f"AV ping failed, retrying...: {exc}")
+                time.sleep(1)
+        logger.info("AV service is alive")
+        self._connected = True
 
         self.init()
 
     # ---------------------------
     # Public API
     # ---------------------------
+
     def init(self):
-        # long-lived channel
-        self._channel = grpc.insecure_channel(self._url)
-        self._stub = av_server_pb2_grpc.AvServerStub(self._channel)
-
-        # Ping
-        try:
-            pong = self._stub.Ping(empty_pb2.Empty(), timeout=self._timeout)
-            logger.info(f"Ping response: {pong.msg}")
-        except grpc.RpcError as e:
-            raise RuntimeError(f"Ping failed: {e.code().name} - {e.details()}") from e
-
         cfg_struct = Struct()
         cfg_struct.update(self._av_cfg if self._av_cfg is not None else {})
         config = config_pb2.Config(config=cfg_struct)
@@ -79,15 +80,12 @@ class AVWrapper:
         if not response.success:
             raise RuntimeError(f"Server Init returned success=false: {response.msg}")
 
-        self._connected = True
-
     def reset(
         self,
         output_dir: str,
         sps: ScenarioPack,
         init_obs: Optional[dict[str, Any]] = {},
     ):
-
         self._sps = sps
         self._ensure_ready()
         req = av_server_pb2.AvServerMessages.ResetRequest(

@@ -11,6 +11,12 @@ from runner.sim_wrapper import SimWrapper
 
 logger = logging.getLogger(__name__)
 
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 
 class Runner:
     def __init__(self, spec: dict[str, Any]):
@@ -61,7 +67,6 @@ class Runner:
                 sim_spec=sim_spec,
                 dt_ns=int(self._dt_s * 1e9),
             )
-            # self.sim.init(sim_spec=sim_spec, dt=self._dt_s)
         except Exception as exc:
             logger.error("Simulator initialization failed")
             raise exc
@@ -72,7 +77,6 @@ class Runner:
                 dt_ns=int(self._dt_s * 1e9),
                 sps=self.sps,
             )
-            # self.av.init(av_spec=av_spec, dt=self._dt_s)
         except Exception as exc:
             logger.error("AV initialization failed")
             raise exc

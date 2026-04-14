@@ -11,6 +11,7 @@ from pisa_api import (
     config_pb2,
     empty_pb2,
     path_pb2,
+    scenario_pb2,
 )
 
 from runner.utils.control import Ctrl
@@ -50,7 +51,7 @@ class SimWrapper:
                 break
             except Exception as exc:
                 logger.warning(f"Simulator ping failed, retrying...")
-                time.sleep(1)
+                time.sleep(2)
         logger.info("Simulator service is alive")
         self._connected = True
 
@@ -65,16 +66,15 @@ class SimWrapper:
         cfg_struct.update(self._sim_cfg if self._sim_cfg is not None else {})
         config = config_pb2.Config(config=cfg_struct)
         scenario_spec = self._sim_spec.get("scenario", None)
-        scenario_req = sim_server_pb2.scenario__pb2.Scenario(
-            type=scenario_spec.get("type"),
-            name=scenario_spec.get("name"),
-            path=path_pb2.Path(path=scenario_spec.get("path")),
-        )
         request = sim_server_pb2.SimServerMessages.InitRequest(
             config=config,
             output_dir=path_pb2.Path(path=str(self._sim_output_dir)),
             dt=self._dt_s,
-            scenario=scenario_req,
+            scenario=scenario_pb2.Scenario(
+                format=scenario_spec.get("format"),
+                name=scenario_spec.get("name"),
+                path=path_pb2.Path(path=scenario_spec.get("path")),
+            ),
         )
         response = self._stub.Init(request, timeout=self._timeout)
         logger.info(f"Init response: {response.msg}")
@@ -97,7 +97,9 @@ class SimWrapper:
             resp = self._stub.Reset(req, timeout=self._timeout)
             return resp.objects
         except grpc.RpcError as e:
-            raise RuntimeError(f"Reset failed: {e.code().name} - {e.details()}") from e
+            raise RuntimeError(
+                f"SimWrapper Reset failed: {e.code().name} - {e.details()}"
+            ) from e
 
     def step(self, ctrl_cmd: Ctrl, time_stamp_ns: int):
         self._ensure_ready()

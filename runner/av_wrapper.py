@@ -99,7 +99,9 @@ class AVWrapper:
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.UNAVAILABLE:
                 raise RuntimeError(f"AV timed out during reset: {e.details()}") from e
-            raise RuntimeError(f"Reset failed: {e.code().name} - {e.details()}") from e
+            raise RuntimeError(
+                f"AVWrapper Reset failed: {e.code().name} - {e.details()}"
+            ) from e
 
     def step(self, obs, time_stamp_ns: int):
         self._ensure_ready()

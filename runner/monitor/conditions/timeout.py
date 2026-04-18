@@ -9,10 +9,16 @@ class TimeoutCondition(ConditionNode):
     def __init__(self, config: dict):
         super().__init__(config)
 
-        assert (
-            "timeout_ms" in config
-        ), f"TimeoutCondition config must have 'timeout_ms' key, but got: {config}"
-        self.timeout_threshold = float(config.get("timeout_ms"))  # in milliseconds
+        if "timeout_ms" not in config:
+            raise ValueError(
+                f"TimeoutCondition config must have 'timeout_ms' key, but got: {config}"
+            )
+        try:
+            self.timeout_threshold = float(config["timeout_ms"])  # in milliseconds
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"TimeoutCondition config 'timeout_ms' must be a number, but got: {config.get('timeout_ms')}"
+            ) from exc
 
     def put(self, data):
         self.buffer.append(data)

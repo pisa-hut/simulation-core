@@ -5,7 +5,6 @@ import logging
 
 CONDITION_REGISTRY = {
     "timeout": f"{__name__.rsplit('.', 1)[0]}.timeout.TimeoutCondition",
-    "collision": f"{__name__.rsplit('.', 1)[0]}.collision.CollisionCondition",
 }
 
 logger = logging.getLogger(__name__)

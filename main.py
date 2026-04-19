@@ -1,7 +1,7 @@
 import argparse
 import json
 import logging
-from runner.runner import Runner
+from simcore.engine import Runner
 
 logging.basicConfig(
     level=logging.DEBUG,

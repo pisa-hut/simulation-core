@@ -1,4 +1,4 @@
-from runner.monitor.conditions.condition import (
+from simcore.monitor.conditions.condition import (
     ConditionCode,
     ConditionNode,
     EvaluationResult,

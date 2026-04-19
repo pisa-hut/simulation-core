@@ -4,9 +4,9 @@ from pathlib import Path
 from time import time
 from typing import Any, Optional
 
-from runner.av_wrapper import AVWrapper
-from runner.utils.sps import ScenarioPack
-from runner.sim_wrapper import SimWrapper
+from simcore.av_wrapper import AVWrapper
+from simcore.utils.sps import ScenarioPack
+from simcore.sim_wrapper import SimWrapper
 
 
 logging.basicConfig(

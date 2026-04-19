@@ -2,9 +2,9 @@ import logging
 from pathlib import Path
 import yaml
 
-from runner.av_wrapper import AVWrapper
-from runner.sim_wrapper import SimWrapper
-from runner.monitor.conditions.condition import ConditionCode, ConditionNode
+from simcore.av_wrapper import AVWrapper
+from simcore.sim_wrapper import SimWrapper
+from simcore.monitor.conditions.condition import ConditionCode, ConditionNode
 
 
 logger = logging.getLogger(__name__)

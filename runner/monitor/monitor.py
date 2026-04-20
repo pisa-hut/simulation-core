@@ -1,11 +1,13 @@
 import logging
 from pathlib import Path
+
 import yaml
 
 from runner.av_wrapper import AVWrapper
+from runner.monitor.conditions.condition_node import ConditionNode
+from runner.monitor.conditions.evaluation import ConditionCode
+from runner.monitor.conditions.tree_builder import build_condition_tree
 from runner.sim_wrapper import SimWrapper
-from runner.monitor.conditions.condition import ConditionCode, ConditionNode
-
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ class Monitor:
         self.sim = sim
 
         self.cfg = None
-        self.root: ConditionNode = None
+        self.root: ConditionNode | None = None
 
         self._load_config(config_path)
         assert "condition" in self.cfg, "Monitor config must contain 'condition' key"
@@ -24,22 +26,25 @@ class Monitor:
         condition_cfg = self.cfg.get("condition")
         if not isinstance(condition_cfg, dict):
             raise ValueError(
-                "Monitor config 'condition' must be a mapping describing an and/or condition tree"
+                "Monitor config 'condition' must be a mapping describing a condition tree"
             )
-        condition_type = condition_cfg.get("type").lower()
-        if condition_type not in {"and", "or"}:
-            raise ValueError(
-                "Monitor root condition must be a composite 'and' or 'or' node; "
-                f"got {condition_type!r}"
-            )
-        self.root = ConditionNode(condition_cfg)
 
+        self.root = build_condition_tree(condition_cfg)
         logger.debug("Built condition tree: %s", self.root)
 
     def _load_config(self, path: str) -> None:
+        if not path:
+            raise ValueError("Monitor config_path is required")
+
         self.cfg = yaml.safe_load(Path(path).read_text())
+        if not isinstance(self.cfg, dict):
+            raise ValueError(
+                f"Monitor config at {path!r} must deserialize to a mapping, got {type(self.cfg).__name__}"
+            )
 
     def update(self, sim_time_ns: int, observation: dict, control: dict) -> None:
+        if self.root is None:
+            return
         self.root.put((sim_time_ns, observation, control))
 
     def should_stop(self) -> bool:
@@ -53,7 +58,9 @@ class Monitor:
             result = self.root.evaluate()
             if result.code == ConditionCode.TRIGGERED:
                 logger.info(
-                    f"Condition {result.condition_name} triggered: {result.detail}"
+                    "Condition %s triggered: %s",
+                    result.condition_name,
+                    result.detail,
                 )
                 return True
         return False

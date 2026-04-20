@@ -1,8 +1,7 @@
-from runner.monitor.conditions.condition import (
-    ConditionCode,
-    ConditionNode,
-    EvaluationResult,
-)
+from collections import deque
+
+from runner.monitor.conditions.condition_node import ConditionNode
+from runner.monitor.conditions.evaluation import ConditionCode, EvaluationResult
 
 
 class TimeoutCondition(ConditionNode):
@@ -13,26 +12,30 @@ class TimeoutCondition(ConditionNode):
             raise ValueError(
                 f"TimeoutCondition config must have 'timeout_ms' key, but got: {config}"
             )
+
         try:
-            self.timeout_threshold = float(config["timeout_ms"])  # in milliseconds
+            self.timeout_threshold = float(config["timeout_ms"])
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                f"TimeoutCondition config 'timeout_ms' must be a number, but got: {config.get('timeout_ms')}"
+                "TimeoutCondition config 'timeout_ms' must be a number, "
+                f"but got: {config.get('timeout_ms')}"
             ) from exc
+
+        self.buffer = deque(maxlen=1)
 
     def put(self, data):
         self.buffer.append(data)
-        if len(self.buffer) > 1:
-            self.buffer.pop(0)
 
     def evaluate(self) -> EvaluationResult:
-        if len(self.buffer) < 1:
+        if not self.buffer:
             return self.result(ConditionCode.NOT_EVALUATED, "No data to evaluate")
-        data_time = self.buffer[0][0] / 1e6  # Convert ns to ms
+
+        data_time = self.buffer[0][0] / 1e6
 
         if data_time > self.timeout_threshold:
             return self.result(
                 ConditionCode.TRIGGERED,
                 f"Timeout detected: {data_time} ms",
             )
+
         return self.result(ConditionCode.NOT_TRIGGERED, "No timeout detected")

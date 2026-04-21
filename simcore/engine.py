@@ -150,7 +150,7 @@ class SimulationEngine:
         status_dir.mkdir(parents=True, exist_ok=True)
 
         completed_file = status_dir / "completed.txt"
-        if completed_file.exists():
+        if completed_file.exists() and not self.dry_run:
             logger.warning(
                 f"Completed file already exists for {output_related}. Skipping execution."
             )

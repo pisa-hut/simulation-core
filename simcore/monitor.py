@@ -4,7 +4,7 @@ import yaml
 
 from simcore.av_wrapper import AVWrapper
 from simcore.sim_wrapper import SimWrapper
-from simcore.monitor.conditions.condition import ConditionCode, ConditionNode
+from simcore.conditions.condition import ConditionCode, ConditionNode
 
 
 logger = logging.getLogger(__name__)

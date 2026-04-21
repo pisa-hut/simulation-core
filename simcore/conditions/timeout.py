@@ -1,4 +1,4 @@
-from simcore.monitor.conditions.condition import (
+from simcore.conditions.condition import (
     ConditionCode,
     ConditionNode,
     EvaluationResult,

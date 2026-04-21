@@ -5,9 +5,9 @@ from time import time
 from typing import Any, Optional
 
 from simcore.av_wrapper import AVWrapper
-from simcore.utils.sps import ScenarioPack
+from simcore.monitor import Monitor
 from simcore.sim_wrapper import SimWrapper
-
+from simcore.utils.sps import ScenarioPack
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,10 +70,10 @@ class SimulationEngine:
             logger.error("AV initialization failed")
             raise exc
 
-        module = importlib.import_module(monitor_spec["module_path"].split(":")[0])
-        monitor_class = getattr(module, monitor_spec["module_path"].split(":")[1])
-        self.monitor = monitor_class(
-            config_path=monitor_spec.get("config_path", None), av=self.av, sim=self.sim
+        self.monitor = Monitor(
+            config_path=monitor_spec.get("config_path", None),
+            av=self.av,
+            sim=self.sim,
         )
 
         if self.sps.param_range_file is not None:

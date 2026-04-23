@@ -1,7 +1,7 @@
 import argparse
 import json
 import logging
-from runner.runner import Runner
+from simcore.engine import SimulationEngine
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -30,8 +30,8 @@ def main():
     with open(args.runner_spec, "r") as f:
         runner_spec = json.load(f)
 
-    runner = Runner(runner_spec)
-    runner.exec()
+    engine = SimulationEngine(runner_spec)
+    engine.exec()
 
 
 if __name__ == "__main__":

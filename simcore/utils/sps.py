@@ -8,7 +8,7 @@ import yaml
 from pisa_api import path_pb2, scenario_pb2
 
 
-from runner.utils.position import PositionFactory, Position
+from simcore.utils.position import PositionFactory, Position
 
 
 @dataclass

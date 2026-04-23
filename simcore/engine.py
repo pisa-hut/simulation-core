@@ -4,10 +4,10 @@ from pathlib import Path
 from time import time
 from typing import Any, Optional
 
-from runner.av_wrapper import AVWrapper
-from runner.utils.sps import ScenarioPack
-from runner.sim_wrapper import SimWrapper
-
+from simcore.av_wrapper import AVWrapper
+from simcore.monitor import Monitor
+from simcore.sim_wrapper import SimWrapper
+from simcore.utils.sps import ScenarioPack
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class Runner:
+class SimulationEngine:
     def __init__(self, spec: dict[str, Any]):
         runtime_spec = spec.get("runtime", {})
         task_spec = spec.get("task", {})
@@ -70,10 +70,10 @@ class Runner:
             logger.error("AV initialization failed")
             raise exc
 
-        module = importlib.import_module(monitor_spec["module_path"].split(":")[0])
-        monitor_class = getattr(module, monitor_spec["module_path"].split(":")[1])
-        self.monitor = monitor_class(
-            config_path=monitor_spec.get("config_path", None), av=self.av, sim=self.sim
+        self.monitor = Monitor(
+            config_path=monitor_spec.get("config_path", None),
+            av=self.av,
+            sim=self.sim,
         )
 
         if self.sps.param_range_file is not None:
@@ -150,7 +150,7 @@ class Runner:
         status_dir.mkdir(parents=True, exist_ok=True)
 
         completed_file = status_dir / "completed.txt"
-        if completed_file.exists():
+        if completed_file.exists() and not self.dry_run:
             logger.warning(
                 f"Completed file already exists for {output_related}. Skipping execution."
             )

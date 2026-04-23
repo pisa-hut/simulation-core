@@ -1,7 +1,7 @@
 [project]
-name = "runner"
-version = "0.1.6"
-description = "Simulation core runner for PISA"
+name = "simcore"
+version = "0.2.0"
+description = "PISA simulation core - drives the simulation loop via gRPC"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [

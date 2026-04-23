@@ -1,7 +1,10 @@
 from collections import deque
 
-from runner.monitor.conditions.condition_node import ConditionNode
-from runner.monitor.conditions.evaluation import ConditionCode, EvaluationResult
+from simcore.conditions import (
+    ConditionCode,
+    ConditionNode,
+    EvaluationResult,
+)
 
 
 class TimeoutCondition(ConditionNode):

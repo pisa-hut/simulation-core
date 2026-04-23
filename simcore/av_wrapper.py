@@ -1,58 +1,62 @@
 import logging
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import grpc
 from google.protobuf.struct_pb2 import Struct
 
 from pisa_api import (
-    sim_server_pb2,
-    sim_server_pb2_grpc,
+    av_server_pb2,
+    av_server_pb2_grpc,
     config_pb2,
     empty_pb2,
     path_pb2,
-    scenario_pb2,
 )
 
-from runner.utils.control import Ctrl
-from runner.utils.sps import ScenarioPack
-from runner.utils.util import get_cfg
+from simcore.utils.sps import ScenarioPack
+from simcore.utils.util import get_cfg
 
 logger = logging.getLogger(__name__)
 
 
-class SimWrapper:
-    def __init__(self, sim_spec: dict, dt_ns: int | None = None):
-        self._sim_spec = sim_spec
+class AVWrapper:
+    def __init__(
+        self,
+        av_spec: dict,
+        map_name: str,
+        dt_ns: int = None,
+    ):
+        self._av_spec = av_spec
+        self._map_name = map_name
 
         if dt_ns is None:
-            logger.warning("dt not specified for SimWrapper, defaulting to 0.01s")
+            logger.warning("dt not specified for AVWrapper, defaulting to 0.01s")
             self._dt_s = 0.01
         else:
             self._dt_s = dt_ns / 1e9
 
-        self._url = self._sim_spec.get("url", "localhost:50053")
-        self._timeout = float(self._sim_spec.get("timeout", 10.0))
-        self._sim_cfg_path = self._sim_spec.get("config_path", None)
-        self._sim_output_dir = self._sim_spec.get("output_path", "/mnt/output")
+        self._url = self._av_spec.get("url", "localhost:50052")
+        self._timeout = float(self._av_spec.get("timeout", 100.0))
+        self._av_cfg_path = self._av_spec.get("config_path", None)
+        self._av_output_dir = self._av_spec.get("output_path", "/mnt/output")
 
-        if self._sim_cfg_path is not None:
-            self._sim_cfg = get_cfg(self._sim_cfg_path)
+        if self._av_cfg_path is not None:
+            self._av_cfg = get_cfg(self._av_cfg_path)
         else:
-            self._sim_cfg = None
+            self._av_cfg = None
 
         # long-lived channel
         self._channel = grpc.insecure_channel(self._url)
-        self._stub = sim_server_pb2_grpc.SimServerStub(self._channel)
+        self._stub = av_server_pb2_grpc.AvServerStub(self._channel)
         while True:
             try:
                 pong = self._stub.Ping(empty_pb2.Empty(), timeout=self._timeout)
-                logger.info(f"Simulator ping response: {pong.msg}")
+                logger.info(f"AV ping response: {pong.msg}")
                 break
             except Exception as exc:
-                logger.warning(f"Simulator ping failed, retrying...")
+                logger.warning(f"AV ping failed, retrying...")
                 time.sleep(2)
-        logger.info("Simulator service is alive")
+        logger.info("AV service is alive")
         self._connected = True
 
         self.init()
@@ -63,18 +67,13 @@ class SimWrapper:
 
     def init(self):
         cfg_struct = Struct()
-        cfg_struct.update(self._sim_cfg if self._sim_cfg is not None else {})
+        cfg_struct.update(self._av_cfg if self._av_cfg is not None else {})
         config = config_pb2.Config(config=cfg_struct)
-        scenario_spec = self._sim_spec.get("scenario", None)
-        request = sim_server_pb2.SimServerMessages.InitRequest(
+        request = av_server_pb2.AvServerMessages.InitRequest(
             config=config,
-            output_dir=path_pb2.Path(path=str(self._sim_output_dir)),
+            output_dir=path_pb2.Path(path=str(self._av_output_dir)),
+            map_name=self._map_name,
             dt=self._dt_s,
-            scenario=scenario_pb2.Scenario(
-                format=scenario_spec.get("format"),
-                name=scenario_spec.get("name"),
-                path=path_pb2.Path(path=scenario_spec.get("path")),
-            ),
         )
         response = self._stub.Init(request, timeout=self._timeout)
         logger.info(f"Init response: {response.msg}")
@@ -84,44 +83,36 @@ class SimWrapper:
     def reset(
         self,
         output_dir: str,
-        scenario_pack: ScenarioPack,
-        params: Optional[dict[str, str]] = {},
+        sps: ScenarioPack,
+        init_obs: Optional[dict[str, Any]] = {},
     ):
+        self._sps = sps
         self._ensure_ready()
-        req = sim_server_pb2.SimServerMessages.ResetRequest(
+        req = av_server_pb2.AvServerMessages.ResetRequest(
             output_dir=path_pb2.Path(path=str(output_dir)),
-            scenario_pack=scenario_pack.to_protobuf(),
-            params=params,
+            scenario_pack=self._sps.to_protobuf(),
+            initial_observation=init_obs,
         )
         try:
             resp = self._stub.Reset(req, timeout=self._timeout)
-            return resp.objects
+            return resp.ctrl_cmd
         except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.UNAVAILABLE:
+                raise RuntimeError(f"AV timed out during reset: {e.details()}") from e
             raise RuntimeError(
-                f"SimWrapper Reset failed: {e.code().name} - {e.details()}"
+                f"AVWrapper Reset failed: {e.code().name} - {e.details()}"
             ) from e
 
-    def step(self, ctrl_cmd: Ctrl, time_stamp_ns: int):
+    def step(self, obs, time_stamp_ns: int):
         self._ensure_ready()
 
-        if ctrl_cmd == None:
-            return control_pb2.CtrlCmd(mode=control_pb2.CtrlMode.NONE)  # 空的 CtrlCmd
-
-        # payload = Struct()
-        # payload.update(ctrl_cmd.payload)
-
-        # ctrl_pb = control_pb2.CtrlCmd(
-        #     mode=control_pb2.CtrlMode.ACKERMANN,  # 根據 Ctrl.mode 決定 CtrlMode
-        #     payload=payload,
-        # )
-
-        req = sim_server_pb2.SimServerMessages.StepRequest(
-            ctrl_cmd=ctrl_cmd, timestamp_ns=int(time_stamp_ns)
+        req = av_server_pb2.AvServerMessages.StepRequest(
+            observation=obs, timestamp_ns=int(time_stamp_ns)
         )
         try:
             resp = self._stub.Step(req, timeout=self._timeout)
             # StepResponse { repeated ObjectState objects }
-            return resp.objects
+            return resp.ctrl_cmd
         except grpc.RpcError as e:
             raise RuntimeError(f"Step failed: {e.code().name} - {e.details()}") from e
 
@@ -159,7 +150,7 @@ class SimWrapper:
     # ---------------------------
     def _ensure_ready(self):
         if self._stub is None or self._channel is None or not self._connected:
-            raise RuntimeError("SimWrapper not initialized. Call init() first.")
+            raise RuntimeError("AvWrapper not initialized. Call init() first.")
 
     def _close(self):
         if self._channel is not None:

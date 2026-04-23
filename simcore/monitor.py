@@ -3,11 +3,14 @@ from pathlib import Path
 
 import yaml
 
-from runner.av_wrapper import AVWrapper
-from runner.monitor.conditions.condition_node import ConditionNode
-from runner.monitor.conditions.evaluation import ConditionCode
-from runner.monitor.conditions.tree_builder import build_condition_tree
-from runner.sim_wrapper import SimWrapper
+from simcore.av_wrapper import AVWrapper
+from simcore.sim_wrapper import SimWrapper
+
+# from simcore.conditions import build_condition_tree
+# from simcore.conditions.condition_node import ConditionNode
+# from simcore.conditions.evaluation import ConditionCode
+
+from simcore.conditions import ConditionNode, ConditionCode, build_condition_tree
 
 logger = logging.getLogger(__name__)
 

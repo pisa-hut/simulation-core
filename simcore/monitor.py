@@ -12,15 +12,22 @@ logger = logging.getLogger(__name__)
 
 
 class Monitor:
-    def __init__(self, config_path: str, av: AVWrapper, sim: SimWrapper):
+    def __init__(self, config_path: str | None, av: AVWrapper, sim: SimWrapper):
         self.av = av
         self.sim = sim
 
-        self.cfg = None
+        self.cfg: dict | None = None
         self.root: ConditionNode | None = None
 
+        if not config_path:
+            logger.warning(
+                "No monitor config_path provided; condition monitoring is disabled."
+            )
+            return
+
         self._load_config(config_path)
-        assert "condition" in self.cfg, "Monitor config must contain 'condition' key"
+        if "condition" not in self.cfg:
+            raise ValueError("Monitor config must contain 'condition' key")
 
         condition_cfg = self.cfg.get("condition")
         if not isinstance(condition_cfg, dict):
@@ -32,9 +39,6 @@ class Monitor:
         logger.debug("Built condition tree: %s", self.root)
 
     def _load_config(self, path: str) -> None:
-        if not path:
-            raise ValueError("Monitor config_path is required")
-
         self.cfg = yaml.safe_load(Path(path).read_text())
         if not isinstance(self.cfg, dict):
             raise ValueError(

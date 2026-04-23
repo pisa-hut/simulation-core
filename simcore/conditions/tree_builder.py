@@ -11,8 +11,14 @@ def load_condition_class(type_name: str):
         raise ValueError(f"Unknown condition type: {type_name}") from exc
 
     module_name, class_name = module_path.rsplit(".", 1)
-    module = importlib.import_module(module_name)
-    return getattr(module, class_name)
+    try:
+        module = importlib.import_module(module_name)
+        return getattr(module, class_name)
+    except (ImportError, AttributeError) as exc:
+        raise ValueError(
+            f"Invalid condition registry entry for type '{type_name}': "
+            f"'{module_path}'"
+        ) from exc
 
 
 def build_condition_tree(config: dict):

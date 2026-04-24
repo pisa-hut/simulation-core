@@ -91,6 +91,13 @@ class SimulationEngine:
             )
             self.param_sampler = None
 
+        # Count of concrete-scenario executions that actually ran to
+        # completion during this engine lifetime. The executor reads this
+        # after exec() (regardless of whether it raised) to tell the
+        # manager whether the run was "useful" — a run with zero finished
+        # concretes counts toward the permanent-fail streak.
+        self.completed_concrete_runs = 0
+
     def exec(self) -> None:
         """
         Run the scenario(s) according to the provided specifications.
@@ -168,6 +175,10 @@ class SimulationEngine:
                 )
             raise e
         else:
+            # Count the execution as soon as run_concrete returned cleanly,
+            # before any IO that might fail. Dry runs still count — the
+            # scenario did run, we're just not persisting completed.txt.
+            self.completed_concrete_runs += 1
             if self.dry_run:
                 logger.info(
                     f"Dry run mode enabled; skipping writing completed file for {output_related}."

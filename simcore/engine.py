@@ -2,7 +2,7 @@ import importlib
 import logging
 from pathlib import Path
 from time import time
-from typing import Any, Optional
+from typing import Any
 
 from simcore.av_wrapper import AVWrapper
 from simcore.monitor import Monitor
@@ -37,18 +37,14 @@ class SimulationEngine:
         self.dry_run = runtime_spec.get("dry_run", False)
 
         self.job_id = task_spec.get("job_id", "unknown_job")
-        self.output_base = (
-            Path(task_spec.get("output_dir", "./outputs")).expanduser().resolve()
-        )
+        self.output_base = Path(task_spec.get("output_dir", "./outputs")).expanduser().resolve()
         self.output_base.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output base directory set to: {self.output_base}")
 
         try:
             self.sps = ScenarioPack.from_dict(scenario_spec, map_spec)
         except Exception as exc:
-            logger.exception(
-                "Failed to create ScenarioPack from scenario and map specifications."
-            )
+            logger.exception("Failed to create ScenarioPack from scenario and map specifications.")
             raise exc
 
         try:
@@ -109,9 +105,7 @@ class SimulationEngine:
                 logger.info("Running logical scenario with parameter sampling.")
                 self.run_logical()
             else:
-                logger.info(
-                    "Running single concrete scenario without parameter sampling."
-                )
+                logger.info("Running single concrete scenario without parameter sampling.")
                 self.concrete_wrapper("concrete", self.sps)
         except Exception as e:
             logger.error(f"Error during scenario execution: {e}")
@@ -128,7 +122,7 @@ class SimulationEngine:
         logger.debug(f"Total parameter combinations: {total}")
 
         for i in range(total):
-            logger.info(f"Sampling iteration {i+1}/{total}")
+            logger.info(f"Sampling iteration {i + 1}/{total}")
             params = self.param_sampler.next()
 
             if params is None:
@@ -138,10 +132,10 @@ class SimulationEngine:
             logger.debug(f"Running scenario with parameters: {params}")
 
             try:
-                self.concrete_wrapper(f"iteration_{i+1}", self.sps, params)
+                self.concrete_wrapper(f"iteration_{i + 1}", self.sps, params)
             except RuntimeError as e:
                 logger.error(
-                    f"Scenario execution failed at iteration {i+1} with parameters: {params}"
+                    f"Scenario execution failed at iteration {i + 1} with parameters: {params}"
                 )
                 raise e
 
@@ -151,7 +145,7 @@ class SimulationEngine:
         self,
         output_related: str,
         sps: ScenarioPack,
-        params: Optional[dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         status_dir = Path(self.output_base / output_related / "status")
         status_dir.mkdir(parents=True, exist_ok=True)
@@ -166,13 +160,9 @@ class SimulationEngine:
         try:
             self.run_concrete(output_related, sps, params)
         except Exception as e:
-            logger.error(
-                f"Error in concrete scenario execution for {output_related}: {e}"
-            )
+            logger.error(f"Error in concrete scenario execution for {output_related}: {e}")
             with open(status_dir / "error.txt", "a") as f:
-                f.write(
-                    f"Error at {time()} by job {self.job_id}: {type(e).__name__}: {str(e)}\n"
-                )
+                f.write(f"Error at {time()} by job {self.job_id}: {type(e).__name__}: {str(e)}\n")
             raise e
         else:
             # Count the execution as soon as run_concrete returned cleanly,
@@ -192,7 +182,7 @@ class SimulationEngine:
         self,
         output_related: str,
         sps: ScenarioPack,
-        params: Optional[dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         """
         Run a single concrete scenario with the given parameters.
@@ -200,7 +190,7 @@ class SimulationEngine:
 
         raw_obs = None
 
-        logger.info(f"Resetting simulator...")
+        logger.info("Resetting simulator...")
         raw_obs = self.sim.reset(output_related, sps, params)
 
         logger.info("Resetting AV...")

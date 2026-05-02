@@ -1,17 +1,17 @@
+import contextlib
 import logging
 import time
-from typing import Optional
 
 import grpc
 from google.protobuf.struct_pb2 import Struct
-
 from pisa_api import (
-    sim_server_pb2,
-    sim_server_pb2_grpc,
     config_pb2,
+    control_pb2,
     empty_pb2,
     path_pb2,
     scenario_pb2,
+    sim_server_pb2,
+    sim_server_pb2_grpc,
 )
 
 from simcore.utils.control import Ctrl
@@ -49,8 +49,8 @@ class SimWrapper:
                 pong = self._stub.Ping(empty_pb2.Empty(), timeout=self._timeout)
                 logger.info(f"Simulator ping response: {pong.msg}")
                 break
-            except Exception as exc:
-                logger.warning(f"Simulator ping failed, retrying...")
+            except Exception:
+                logger.warning("Simulator ping failed, retrying...")
                 time.sleep(2)
         logger.info("Simulator service is alive")
         self._connected = True
@@ -85,27 +85,25 @@ class SimWrapper:
         self,
         output_dir: str,
         scenario_pack: ScenarioPack,
-        params: Optional[dict[str, str]] = {},
+        params: dict[str, str] | None = None,
     ):
         self._ensure_ready()
         req = sim_server_pb2.SimServerMessages.ResetRequest(
             output_dir=path_pb2.Path(path=str(output_dir)),
             scenario_pack=scenario_pack.to_protobuf(),
-            params=params,
+            params=params or {},
         )
         try:
             resp = self._stub.Reset(req, timeout=self._timeout)
             return resp.objects
         except grpc.RpcError as e:
-            raise RuntimeError(
-                f"SimWrapper Reset failed: {e.code().name} - {e.details()}"
-            ) from e
+            raise RuntimeError(f"SimWrapper Reset failed: {e.code().name} - {e.details()}") from e
 
     def step(self, ctrl_cmd: Ctrl, time_stamp_ns: int):
         self._ensure_ready()
 
-        if ctrl_cmd == None:
-            return control_pb2.CtrlCmd(mode=control_pb2.CtrlMode.NONE)  # 空的 CtrlCmd
+        if ctrl_cmd is None:
+            return control_pb2.CtrlCmd(mode=control_pb2.CtrlMode.NONE)  # empty CtrlCmd
 
         # payload = Struct()
         # payload.update(ctrl_cmd.payload)
@@ -146,9 +144,7 @@ class SimWrapper:
         if self._stub is None or not self._connected:
             return True
         try:
-            resp = self._stub.ShouldQuit(
-                empty_pb2.Empty(), timeout=min(self._timeout, 2.0)
-            )
+            resp = self._stub.ShouldQuit(empty_pb2.Empty(), timeout=min(self._timeout, 2.0))
             return bool(resp.should_quit)
         except grpc.RpcError:
             # server 抖一下不要直接判 quit
@@ -163,9 +159,7 @@ class SimWrapper:
 
     def _close(self):
         if self._channel is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._channel.close()
-            except Exception:
-                pass
         self._channel = None
         self._stub = None

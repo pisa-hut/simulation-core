@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import ctypes as ct
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-import logging
 
 from pisa_api import position_pb2
-
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +155,8 @@ class PositionFactory:
         self._setup_functions()
 
         # Disable RM log file output
-        self._rm.RM_SetLogFilePath("".encode())
-        self._rm.RM_SetOptionPersistent("disable_stdout".encode())
+        self._rm.RM_SetLogFilePath(b"")
+        self._rm.RM_SetOptionPersistent(b"disable_stdout")
 
         ret = int(self._rm.RM_Init(str(xodr_path).encode()))
         if ret != 0:
@@ -218,7 +217,7 @@ class PositionFactory:
         self._closed = True
         logger.debug("RM_Close ret=%d", ret)
 
-    def __enter__(self) -> "PositionFactory":
+    def __enter__(self) -> PositionFactory:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

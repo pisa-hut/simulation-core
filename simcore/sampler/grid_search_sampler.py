@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Optional, Iterable
-from pathlib import Path
+from collections.abc import Iterable
 from logging import getLogger
+from pathlib import Path
 
 from .base import (
     BaseSampler,
@@ -17,9 +17,9 @@ logger = getLogger(__name__)
 class GridSearchSampler(BaseSampler):
     def __init__(
         self,
-        cfg_path: Optional[Path] = None,
-        past_results: Optional[Iterable[TestResult]] = None,
-        param_range_file: Optional[Path] = None,
+        cfg_path: Path | None = None,
+        past_results: Iterable[TestResult] | None = None,
+        param_range_file: Path | None = None,
     ):
         # self.cfg = get_cfg(cfg_path)
         # try:
@@ -68,8 +68,8 @@ class GridSearchSampler(BaseSampler):
 
     def next(
         self,
-        past_results: Optional[Iterable[TestResult]] = None,
-    ) -> Optional[ParamDict]:
+        past_results: Iterable[TestResult] | None = None,
+    ) -> ParamDict | None:
         if past_results:
             for r in past_results:
                 params = r.get("params", r)
@@ -79,7 +79,7 @@ class GridSearchSampler(BaseSampler):
         while not self._done:
             combo: ParamDict = {
                 name: str(self._grid[i][idx])
-                for i, (name, idx) in enumerate(zip(self._names, self._indices))
+                for i, (name, idx) in enumerate(zip(self._names, self._indices, strict=True))
             }
 
             self._advance_indices()

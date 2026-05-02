@@ -4,9 +4,8 @@ from pathlib import Path
 import yaml
 
 from simcore.av_wrapper import AVWrapper
+from simcore.conditions import ConditionCode, ConditionNode, build_condition_tree
 from simcore.sim_wrapper import SimWrapper
-
-from simcore.conditions import ConditionNode, ConditionCode, build_condition_tree
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +19,7 @@ class Monitor:
         self.root: ConditionNode | None = None
 
         if not config_path:
-            logger.warning(
-                "No monitor config_path provided; condition monitoring is disabled."
-            )
+            logger.warning("No monitor config_path provided; condition monitoring is disabled.")
             return
 
         self._load_config(config_path)

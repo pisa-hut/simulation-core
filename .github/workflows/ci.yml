@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          # `pyproject.toml` declares `requires-python = ">=3.14"`, and
+          # 3.14 isn't preinstalled on ubuntu-latest yet. Let uv fetch
+          # it (uv ships its own Python distributions).
+          python-version: "3.14"
+      - run: uv sync --locked --all-groups
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run pytest -x

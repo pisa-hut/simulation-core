@@ -1,17 +1,16 @@
-from pathlib import Path
 import logging
-from typing import Union
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
-def get_cfg(cfg_path: Union[Path, str]) -> dict:
+def get_cfg(cfg_path: Path | str) -> dict:
     if isinstance(cfg_path, str):
         cfg_path = Path(cfg_path)
 
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config file not found: {cfg_path}")
-    with open(cfg_path, "r") as f:
+    with open(cfg_path) as f:
         if cfg_path.suffix in [".yaml", ".yml"]:
             import yaml
 

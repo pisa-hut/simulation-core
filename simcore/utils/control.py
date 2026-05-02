@@ -1,8 +1,8 @@
-from enum import Enum, auto
 from dataclasses import dataclass
-from typing import Dict, Any
-from google.protobuf.struct_pb2 import Struct
+from enum import Enum, auto
+from typing import Any
 
+from google.protobuf.struct_pb2 import Struct
 from pisa_api import control_pb2
 
 
@@ -19,7 +19,7 @@ class CtrlMode(Enum):
 @dataclass
 class Ctrl:
     mode: CtrlMode = CtrlMode.None_
-    payload: Dict[str, Any] = None
+    payload: dict[str, Any] = None
 
     def to_pb(self):
         payload_struct = Struct()
@@ -31,7 +31,7 @@ class Ctrl:
         )
 
     @classmethod
-    def from_pb(cls, pb: control_pb2.CtrlCmd) -> "Ctrl":
+    def from_pb(cls, pb: control_pb2.CtrlCmd) -> Ctrl:
         mode = CtrlMode(pb.mode)
         payload = {k: v for k, v in pb.payload.items()}
         return cls(mode=mode, payload=payload)

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict
-import yaml
+from typing import Any
 
+import yaml
 from pisa_api import path_pb2, scenario_pb2
 
-
-from simcore.utils.position import PositionFactory, Position
+from simcore.utils.position import Position, PositionFactory
 
 
 @dataclass
@@ -42,9 +41,7 @@ class EgoConfig:
     spawn: SpawnConfig = field(default=None)
 
     @classmethod
-    def from_dict(
-        cls, ego: Dict[str, Any], xodr_path: Path, rmlib_path: Path
-    ) -> "EgoConfig":
+    def from_dict(cls, ego: dict[str, Any], xodr_path: Path, rmlib_path: Path) -> EgoConfig:
         position_factory = PositionFactory(
             lib_path=rmlib_path.resolve(),
             xodr_path=xodr_path.resolve(),
@@ -52,26 +49,24 @@ class EgoConfig:
 
         try:
             target_speed = float(ego["target_speed"])
-        except KeyError:
-            raise ValueError("ego.target_speed not defined") from None
-        except (TypeError, ValueError):
+        except KeyError as exc:
+            raise ValueError("ego.target_speed not defined") from exc
+        except (TypeError, ValueError) as exc:
             raise ValueError(
                 f"ego.target_speed must be a number, got {ego.get('target_speed')!r}"
-            )
+            ) from exc
 
         try:
             goal_raw = ego["position"]
-        except KeyError:
-            raise ValueError("ego.position not defined")
+        except KeyError as exc:
+            raise ValueError("ego.position not defined") from exc
 
         if goal_raw["type"] == "LanePosition":
             goal_pos = position_factory.from_lane(
                 road_id=int(goal_raw["value"][0]),
                 lane_id=int(goal_raw["value"][1]),
                 s=float(goal_raw["value"][2]),
-                offset=(
-                    float(goal_raw["value"][3]) if len(goal_raw["value"]) > 3 else 0.0
-                ),
+                offset=(float(goal_raw["value"][3]) if len(goal_raw["value"]) > 3 else 0.0),
             )
         elif goal_raw["type"] == "WorldPosition":
             goal_pos = position_factory.from_world(
@@ -94,8 +89,8 @@ class EgoConfig:
         )
 
     @classmethod
-    def from_yaml(cls, path: str) -> "EgoConfig":
-        with open(path, "r", encoding="utf-8") as f:
+    def from_yaml(cls, path: str) -> EgoConfig:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return cls.from_dict(data)
 
@@ -117,24 +112,17 @@ class ScenarioPack:
     timeout_ns: int = field(default=int(3e11))  # default 300 seconds
 
     @classmethod
-    def from_dict(
-        cls, scenario_spec: Dict[str, Any], map_spec: Dict[str, Any]
-    ) -> "ScenarioPack":
+    def from_dict(cls, scenario_spec: dict[str, Any], map_spec: dict[str, Any]) -> ScenarioPack:
         name = scenario_spec["title"]
         scenario_folder = scenario_spec["scenario_path"]
         map_name = map_spec["name"]
         ego = EgoConfig.from_dict(
             scenario_spec["goal_config"],
             xodr_path=Path(f"{map_spec['xodr_path']}/{map_name}.xodr").resolve(),
-            rmlib_path=Path(
-                scenario_spec.get("rmlib_path", "libesminiRMLib.so")
-            ).resolve(),
+            rmlib_path=Path(scenario_spec.get("rmlib_path", "libesminiRMLib.so")).resolve(),
         )
         pr_fname = Path(scenario_folder) / f"{name}_param.xosc"
-        if pr_fname.exists():
-            param_range_file = pr_fname
-        else:
-            param_range_file = None
+        param_range_file = pr_fname if pr_fname.exists() else None
 
         return cls(
             name=name,
@@ -144,8 +132,8 @@ class ScenarioPack:
         )
 
     @classmethod
-    def from_yaml(cls, path: str) -> "ScenarioPack":
-        with open(path, "r", encoding="utf-8") as f:
+    def from_yaml(cls, path: str) -> ScenarioPack:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return cls.from_dict(data)
 
@@ -154,9 +142,7 @@ class ScenarioPack:
             name=self.name,
             map_name=self.map_name,
             param_range_file=(
-                path_pb2.Path(path=str(self.param_range_file))
-                if self.param_range_file
-                else None
+                path_pb2.Path(path=str(self.param_range_file)) if self.param_range_file else None
             ),
             ego=self.ego.to_protobuf(),
             timeout_ns=self.timeout_ns,

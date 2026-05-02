@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Optional
 
 from pisa_api import object_pb2
 
@@ -54,7 +53,7 @@ class ObjectKinematic:
     yaw_acceleration: float = 0.0
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ObjectKinematic":
+    def from_dict(cls, data: dict) -> ObjectKinematic:
         return cls(
             time_ns=int(data.get("time_ns", 0)),
             x=float(data.get("x", 0.0)),
@@ -68,7 +67,7 @@ class ObjectKinematic:
         )
 
     @classmethod
-    def from_pb(cls, pb: object_pb2.ObjectKinematic) -> "ObjectKinematic":
+    def from_pb(cls, pb: object_pb2.ObjectKinematic) -> ObjectKinematic:
         return cls(
             time_ns=pb.time_ns,
             x=pb.x,
@@ -82,18 +81,14 @@ class ObjectKinematic:
         )
 
 
-from dataclasses import dataclass
-from typing import Optional
-
-
 @dataclass(frozen=True)
 class Shape:
     type: ShapeType = ShapeType.BOUNDING_BOX
     dimensions: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    footprint: Optional[tuple[tuple[float, float], ...]] = None
+    footprint: tuple[tuple[float, float], ...] | None = None
 
     @classmethod
-    def from_pb(cls, pb: object_pb2.Shape) -> "Shape":
+    def from_pb(cls, pb: object_pb2.Shape) -> Shape:
         shape_type = (
             ShapeType(pb.type)
             if pb.type in ShapeType._value2member_map_
@@ -110,14 +105,14 @@ class Shape:
 class ObjectState:
     _type: RoadObjectType
     kinematic: ObjectKinematic
-    _shape: Optional[Shape] = None
+    _shape: Shape | None = None
 
     @property
     def type(self) -> RoadObjectType:
         return self._type
 
     @property
-    def shape(self) -> Optional[Shape]:
+    def shape(self) -> Shape | None:
         return self._shape
 
     @classmethod
@@ -127,13 +122,13 @@ class ObjectState:
         type: RoadObjectType,
         kinematic: ObjectKinematic,
         shape: Shape | None = None,
-    ) -> "ObjectState":
+    ) -> ObjectState:
         if shape is None:
             shape = default_shape_for_vehicle(type)
         return cls(_type=type, kinematic=kinematic, _shape=shape)
 
     @classmethod
-    def from_pb(cls, pb: object_pb2.ObjectState) -> "ObjectState":
+    def from_pb(cls, pb: object_pb2.ObjectState) -> ObjectState:
         obj_type = (
             RoadObjectType(pb.type)
             if pb.type in RoadObjectType._value2member_map_
@@ -175,9 +170,7 @@ class ObjectState:
             #     shape_pb.Shape.Vertex(
             #         object_pb2.Vector2(x=pt[0], y=pt[1]) for pt in self._shape.footprint
             #     )
-        return object_pb2.ObjectState(
-            type=obj_type_value, kinematic=kinematic_pb, shape=shape_pb
-        )
+        return object_pb2.ObjectState(type=obj_type_value, kinematic=kinematic_pb, shape=shape_pb)
 
     def update(self, kinematic: ObjectKinematic) -> None:
         self.kinematic = kinematic

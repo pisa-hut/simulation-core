@@ -45,15 +45,9 @@ class CollisionCondition(ConditionNode):
             for key in COLLISION_KEYS:
                 if key in payload and bool(payload[key]):
                     return True
-            return any(
-                self._contains_collision(value, depth + 1) for value in payload.values()
-            )
+            return any(self._contains_collision(value, depth + 1) for value in payload.values())
 
         if isinstance(payload, (list, tuple, set, deque)):
             return any(self._contains_collision(value, depth + 1) for value in payload)
 
-        for key in COLLISION_KEYS:
-            if hasattr(payload, key) and bool(getattr(payload, key)):
-                return True
-
-        return False
+        return any(hasattr(payload, key) and bool(getattr(payload, key)) for key in COLLISION_KEYS)

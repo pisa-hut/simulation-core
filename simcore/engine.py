@@ -128,7 +128,7 @@ class SimulationEngine:
         logger.debug(f"Total parameter combinations: {total}")
 
         for i in range(total):
-            logger.info(f"Sampling iteration {i+1}/{total}")
+            logger.info(f"Sampling iteration {i + 1}/{total}")
             params = self.param_sampler.next()
 
             if params is None:
@@ -138,10 +138,10 @@ class SimulationEngine:
             logger.debug(f"Running scenario with parameters: {params}")
 
             try:
-                self.concrete_wrapper(f"iteration_{i+1}", self.sps, params)
+                self.concrete_wrapper(f"iteration_{i + 1}", self.sps, params)
             except RuntimeError as e:
                 logger.error(
-                    f"Scenario execution failed at iteration {i+1} with parameters: {params}"
+                    f"Scenario execution failed at iteration {i + 1} with parameters: {params}"
                 )
                 raise e
 
@@ -200,7 +200,7 @@ class SimulationEngine:
 
         raw_obs = None
 
-        logger.info(f"Resetting simulator...")
+        logger.info("Resetting simulator...")
         raw_obs = self.sim.reset(output_related, sps, params)
 
         logger.info("Resetting AV...")

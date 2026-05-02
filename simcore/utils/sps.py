@@ -54,7 +54,7 @@ class EgoConfig:
             target_speed = float(ego["target_speed"])
         except KeyError:
             raise ValueError("ego.target_speed not defined") from None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             raise ValueError(
                 f"ego.target_speed must be a number, got {ego.get('target_speed')!r}"
             )

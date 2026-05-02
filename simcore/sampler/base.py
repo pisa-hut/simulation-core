@@ -31,7 +31,6 @@ def frange_inclusive(
     lower: float, upper: float, step: float, tol: float = 1e-9
 ) -> List[float]:
     if (step <= 0 and upper > lower) or (step >= 0 and upper < lower):
-
         raise ValueError(f"Invalid step {step} for range [{lower}, {upper}]")
 
     n_steps = int(math.floor((upper - lower) / step + tol)) if step != 0 else 0

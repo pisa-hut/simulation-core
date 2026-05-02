@@ -53,8 +53,8 @@ class AVWrapper:
                 pong = self._stub.Ping(empty_pb2.Empty(), timeout=self._timeout)
                 logger.info(f"AV ping response: {pong.msg}")
                 break
-            except Exception as exc:
-                logger.warning(f"AV ping failed, retrying...")
+            except Exception:
+                logger.warning("AV ping failed, retrying...")
                 time.sleep(2)
         logger.info("AV service is alive")
         self._connected = True

@@ -6,12 +6,13 @@ import grpc
 from google.protobuf.struct_pb2 import Struct
 
 from pisa_api import (
-    sim_server_pb2,
-    sim_server_pb2_grpc,
     config_pb2,
+    control_pb2,
     empty_pb2,
     path_pb2,
     scenario_pb2,
+    sim_server_pb2,
+    sim_server_pb2_grpc,
 )
 
 from simcore.utils.control import Ctrl
@@ -49,8 +50,8 @@ class SimWrapper:
                 pong = self._stub.Ping(empty_pb2.Empty(), timeout=self._timeout)
                 logger.info(f"Simulator ping response: {pong.msg}")
                 break
-            except Exception as exc:
-                logger.warning(f"Simulator ping failed, retrying...")
+            except Exception:
+                logger.warning("Simulator ping failed, retrying...")
                 time.sleep(2)
         logger.info("Simulator service is alive")
         self._connected = True
@@ -104,8 +105,8 @@ class SimWrapper:
     def step(self, ctrl_cmd: Ctrl, time_stamp_ns: int):
         self._ensure_ready()
 
-        if ctrl_cmd == None:
-            return control_pb2.CtrlCmd(mode=control_pb2.CtrlMode.NONE)  # 空的 CtrlCmd
+        if ctrl_cmd is None:
+            return control_pb2.CtrlCmd(mode=control_pb2.CtrlMode.NONE)  # empty CtrlCmd
 
         # payload = Struct()
         # payload.update(ctrl_cmd.payload)

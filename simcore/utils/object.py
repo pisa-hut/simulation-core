@@ -82,10 +82,6 @@ class ObjectKinematic:
         )
 
 
-from dataclasses import dataclass
-from typing import Optional
-
-
 @dataclass(frozen=True)
 class Shape:
     type: ShapeType = ShapeType.BOUNDING_BOX

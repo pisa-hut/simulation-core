@@ -16,8 +16,7 @@ def load_condition_class(type_name: str):
         return getattr(module, class_name)
     except (ImportError, AttributeError) as exc:
         raise ValueError(
-            f"Invalid condition registry entry for type '{type_name}': "
-            f"'{module_path}'"
+            f"Invalid condition registry entry for type '{type_name}': '{module_path}'"
         ) from exc
 
 

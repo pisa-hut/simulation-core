@@ -1,35 +1,33 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Optional, Iterable, Dict, Any, List
+import logging
 import math
 import xml.etree.ElementTree as ET
-import logging
-
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-ParamDict = Dict[str, Any]
-TestResult = Dict[str, Any]
+ParamDict = dict[str, Any]
+TestResult = dict[str, Any]
 
 
 class Sampler:
     def next(
         self,
-        past_results: Optional[Iterable[TestResult]] = None,
-    ) -> Optional[ParamDict]:
+        past_results: Iterable[TestResult] | None = None,
+    ) -> ParamDict | None:
         raise NotImplementedError
 
 
 @dataclass
 class ParameterSpec:
     name: str
-    values: List[float]
+    values: list[float]
 
 
-def frange_inclusive(
-    lower: float, upper: float, step: float, tol: float = 1e-9
-) -> List[float]:
+def frange_inclusive(lower: float, upper: float, step: float, tol: float = 1e-9) -> list[float]:
     if (step <= 0 and upper > lower) or (step >= 0 and upper < lower):
         raise ValueError(f"Invalid step {step} for range [{lower}, {upper}]")
 
@@ -51,7 +49,7 @@ def frange_inclusive(
     return vals
 
 
-def parse_parameter_value_distribution(xml_str: str) -> List[ParameterSpec]:
+def parse_parameter_value_distribution(xml_str: str) -> list[ParameterSpec]:
     root = ET.fromstring(xml_str)
     pvd = (
         root
@@ -65,7 +63,7 @@ def parse_parameter_value_distribution(xml_str: str) -> List[ParameterSpec]:
     if det is None:
         raise ValueError("Only <Deterministic> distributions are supported for now")
 
-    specs: List[ParameterSpec] = []
+    specs: list[ParameterSpec] = []
 
     for elem in det.findall("DeterministicSingleParameterDistribution"):
         name = elem.attrib["parameterName"]
@@ -90,9 +88,9 @@ def parse_parameter_value_distribution(xml_str: str) -> List[ParameterSpec]:
 
 
 class BaseSampler(Sampler):
-    def __init__(self, specs: List[ParameterSpec]):
+    def __init__(self, specs: list[ParameterSpec]):
         self.specs = specs
 
-    def update_with_results(self, past_results: Optional[Iterable[TestResult]]):
+    def update_with_results(self, past_results: Iterable[TestResult] | None):
         if not past_results:
             return

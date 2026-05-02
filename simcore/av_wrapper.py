@@ -1,10 +1,10 @@
+import contextlib
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 import grpc
 from google.protobuf.struct_pb2 import Struct
-
 from pisa_api import (
     av_server_pb2,
     av_server_pb2_grpc,
@@ -84,14 +84,14 @@ class AVWrapper:
         self,
         output_dir: str,
         sps: ScenarioPack,
-        init_obs: Optional[dict[str, Any]] = {},
+        init_obs: dict[str, Any] | None = None,
     ):
         self._sps = sps
         self._ensure_ready()
         req = av_server_pb2.AvServerMessages.ResetRequest(
             output_dir=path_pb2.Path(path=str(output_dir)),
             scenario_pack=self._sps.to_protobuf(),
-            initial_observation=init_obs,
+            initial_observation=init_obs or {},
         )
         try:
             resp = self._stub.Reset(req, timeout=self._timeout)
@@ -99,9 +99,7 @@ class AVWrapper:
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.UNAVAILABLE:
                 raise RuntimeError(f"AV timed out during reset: {e.details()}") from e
-            raise RuntimeError(
-                f"AVWrapper Reset failed: {e.code().name} - {e.details()}"
-            ) from e
+            raise RuntimeError(f"AVWrapper Reset failed: {e.code().name} - {e.details()}") from e
 
     def step(self, obs, time_stamp_ns: int):
         self._ensure_ready()
@@ -137,9 +135,7 @@ class AVWrapper:
         if self._stub is None or not self._connected:
             return True
         try:
-            resp = self._stub.ShouldQuit(
-                empty_pb2.Empty(), timeout=min(self._timeout, 2.0)
-            )
+            resp = self._stub.ShouldQuit(empty_pb2.Empty(), timeout=min(self._timeout, 2.0))
             return bool(resp.should_quit)
         except grpc.RpcError:
             # server 抖一下不要直接判 quit
@@ -154,9 +150,7 @@ class AVWrapper:
 
     def _close(self):
         if self._channel is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._channel.close()
-            except Exception:
-                pass
         self._channel = None
         self._stub = None

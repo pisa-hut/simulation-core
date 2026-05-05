@@ -32,7 +32,7 @@ class SimWrapper:
             self._dt_s = dt_ns / 1e9
 
         self._url = self._sim_spec.get("url", "localhost:50053")
-        self._timeout = float(self._sim_spec.get("timeout", 10.0))
+        self._timeout = float(self._sim_spec.get("timeout", 100.0))
         self._sim_cfg_path = self._sim_spec.get("config_path", None)
         self._sim_output_dir = self._sim_spec.get("output_path", "/mnt/output")
 

@@ -68,6 +68,7 @@ class SimulationEngine:
 
         self.monitor = Monitor(
             config_path=monitor_spec.get("config_path", None),
+            log_file=str(self.output_base / "monitor_log.csv"),
             av=self.av,
             sim=self.sim,
         )
@@ -196,6 +197,9 @@ class SimulationEngine:
         logger.info("Resetting AV...")
         ctrl_for_sim = self.av.reset(output_related, sps, raw_obs)
 
+        logger.info("Resetting monitor...")
+        self.monitor.reset(output_related)
+
         dt_s = self._dt_s
         dt_ns = int(dt_s * 1e9)
 
@@ -209,6 +213,7 @@ class SimulationEngine:
         logger.info("Starting execution loop. using dt_s=%.3f", dt_s)
 
         real_start_time_s = time()
+        sim_time_need = 0
         while True:
             if self.monitor.should_stop():
                 logger.info("Monitor requested to stop the scenario.")
@@ -222,6 +227,7 @@ class SimulationEngine:
             raw_obs = self.sim.step(ctrl_for_sim, sim_time_ns)
             ctrl_for_sim = self.av.step(raw_obs, sim_time_ns)
             self.monitor.update(sim_time_ns, raw_obs, ctrl_for_sim)
+            # self.monitor.log()
 
             sim_time_ns += dt_ns
 

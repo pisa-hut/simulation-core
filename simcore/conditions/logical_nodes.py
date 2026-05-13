@@ -41,6 +41,10 @@ class AndNode(ConditionNode):
             "All conditions triggered",
         )
 
+    def reset(self):
+        for child in self.children:
+            child.reset()
+
     def __str__(self):
         return f"and:{self.name}({', '.join(str(c) for c in self.children)})"
 
@@ -83,6 +87,10 @@ class OrNode(ConditionNode):
             ConditionCode.NOT_TRIGGERED,
             "No conditions triggered",
         )
+
+    def reset(self):
+        for child in self.children:
+            child.reset()
 
     def __str__(self):
         return f"or:{self.name}({', '.join(str(c) for c in self.children)})"

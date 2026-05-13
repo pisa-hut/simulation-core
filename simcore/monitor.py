@@ -7,11 +7,18 @@ from simcore.av_wrapper import AVWrapper
 from simcore.conditions import ConditionCode, ConditionNode, build_condition_tree
 from simcore.sim_wrapper import SimWrapper
 
+import csv
+
 logger = logging.getLogger(__name__)
 
 
 class Monitor:
-    def __init__(self, config_path: str | None, av: AVWrapper, sim: SimWrapper):
+    def __init__(self, config_path: str, log_file: str, av: AVWrapper, sim: SimWrapper):
+        self.log_file = log_file
+        # self.csv_writer = csv.writer(open(self.log_file, "w", newline=""))
+        # header
+        # self.csv_writer.writerow(["sim_time_ns", "observation", "control"])
+
         self.av = av
         self.sim = sim
 
@@ -42,10 +49,15 @@ class Monitor:
                 f"Monitor config at {path!r} must deserialize to a mapping, got {type(self.cfg).__name__}"
             )
 
+    def log(self):
+        # self.csv_writer.writerow(
+        #     [self.sim.get_time_ns(), self.av.get_observation(), self.av.get_control()]
+        # )
+        pass
+
     def update(self, sim_time_ns: int, observation: dict, control: dict) -> None:
-        if self.root is None:
-            return
-        self.root.put((sim_time_ns, observation, control))
+        if self.root:
+            self.root.put((sim_time_ns, observation, control))
 
     def should_stop(self) -> bool:
         if self.av.should_quit():
@@ -64,3 +76,8 @@ class Monitor:
                 )
                 return True
         return False
+
+    def reset(self, output_related: str):
+        # Clear all buffers in the condition tree
+        if self.root:
+            self.root.reset()

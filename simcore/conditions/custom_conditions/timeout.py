@@ -42,3 +42,6 @@ class TimeoutCondition(ConditionNode):
             )
 
         return self.result(ConditionCode.NOT_TRIGGERED, "No timeout detected")
+
+    def reset(self):
+        self.buffer.clear()

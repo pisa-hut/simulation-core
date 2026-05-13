@@ -6,7 +6,8 @@ class AndNode(ConditionNode):
     def __init__(self, config: dict, children: list[ConditionNode]):
         super().__init__(config)
         if self.node_type != "and":
-            raise ValueError(f"AndNode expects type='and', got: {self.node_type}")
+            raise ValueError(
+                f"AndNode expects type='and', got: {self.node_type}")
         if not children:
             raise ValueError("AndNode must have at least one child")
         self.children = children
@@ -41,6 +42,10 @@ class AndNode(ConditionNode):
             "All conditions triggered",
         )
 
+    def reset(self):
+        for child in self.children:
+            child.reset()
+
     def __str__(self):
         return f"and:{self.name}({', '.join(str(c) for c in self.children)})"
 
@@ -49,7 +54,8 @@ class OrNode(ConditionNode):
     def __init__(self, config: dict, children: list[ConditionNode]):
         super().__init__(config)
         if self.node_type != "or":
-            raise ValueError(f"OrNode expects type='or', got: {self.node_type}")
+            raise ValueError(
+                f"OrNode expects type='or', got: {self.node_type}")
         if not children:
             raise ValueError("OrNode must have at least one child")
         self.children = children
@@ -83,6 +89,10 @@ class OrNode(ConditionNode):
             ConditionCode.NOT_TRIGGERED,
             "No conditions triggered",
         )
+
+    def reset(self):
+        for child in self.children:
+            child.reset()
 
     def __str__(self):
         return f"or:{self.name}({', '.join(str(c) for c in self.children)})"

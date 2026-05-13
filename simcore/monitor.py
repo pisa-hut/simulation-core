@@ -7,13 +7,11 @@ from simcore.av_wrapper import AVWrapper
 from simcore.conditions import ConditionCode, ConditionNode, build_condition_tree
 from simcore.sim_wrapper import SimWrapper
 
-import csv
-
 logger = logging.getLogger(__name__)
 
 
 class Monitor:
-    def __init__(self, config_path: str, log_file: str, av: AVWrapper, sim: SimWrapper):
+    def __init__(self, config_path: str | None, log_file: str, av: AVWrapper, sim: SimWrapper):
         self.log_file = log_file
         # self.csv_writer = csv.writer(open(self.log_file, "w", newline=""))
         # header

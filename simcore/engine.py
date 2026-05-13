@@ -227,7 +227,7 @@ class SimulationEngine:
             raw_obs = self.sim.step(ctrl_for_sim, sim_time_ns)
             ctrl_for_sim = self.av.step(raw_obs, sim_time_ns)
             self.monitor.update(sim_time_ns, raw_obs, ctrl_for_sim)
-            self.monitor.log()
+            # self.monitor.log()
 
             sim_time_ns += dt_ns
 

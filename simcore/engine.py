@@ -32,8 +32,7 @@ class SimulationEngine:
         logger.setLevel(getattr(logging, self.log_level, logging.INFO))
         self._dt_s = runtime_spec.get("dt", None)
         if self._dt_s is None:
-            logger.warning(
-                "No 'dt' specified in runtime_spec; defaulting to 0.01s")
+            logger.warning("No 'dt' specified in runtime_spec; defaulting to 0.01s")
             self._dt_s = 0.01
         self.dry_run = runtime_spec.get("dry_run", False)
 
@@ -75,13 +74,10 @@ class SimulationEngine:
         )
 
         if self.sps.param_range_file is not None:
-            logger.debug("Parameter range file provided: %s",
-                         self.sps.param_range_file)
+            logger.debug("Parameter range file provided: %s", self.sps.param_range_file)
             # param_sampler
-            module = importlib.import_module(
-                sampler_spec["module_path"].split(":")[0])
-            sampler_class = getattr(
-                module, sampler_spec["module_path"].split(":")[1])
+            module = importlib.import_module(sampler_spec["module_path"].split(":")[0])
+            sampler_class = getattr(module, sampler_spec["module_path"].split(":")[1])
             self.param_sampler = sampler_class(
                 param_range_file=self.sps.param_range_file,
                 past_results=None,
@@ -107,8 +103,7 @@ class SimulationEngine:
         """
         try:
             if self.param_sampler is not None:
-                logger.info(
-                    "Running logical scenario with parameter sampling.")
+                logger.info("Running logical scenario with parameter sampling.")
                 self.run_logical()
             else:
                 logger.info("Running single concrete scenario without parameter sampling.")

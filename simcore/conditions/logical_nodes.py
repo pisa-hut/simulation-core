@@ -6,8 +6,7 @@ class AndNode(ConditionNode):
     def __init__(self, config: dict, children: list[ConditionNode]):
         super().__init__(config)
         if self.node_type != "and":
-            raise ValueError(
-                f"AndNode expects type='and', got: {self.node_type}")
+            raise ValueError(f"AndNode expects type='and', got: {self.node_type}")
         if not children:
             raise ValueError("AndNode must have at least one child")
         self.children = children
@@ -54,8 +53,7 @@ class OrNode(ConditionNode):
     def __init__(self, config: dict, children: list[ConditionNode]):
         super().__init__(config)
         if self.node_type != "or":
-            raise ValueError(
-                f"OrNode expects type='or', got: {self.node_type}")
+            raise ValueError(f"OrNode expects type='or', got: {self.node_type}")
         if not children:
             raise ValueError("OrNode must have at least one child")
         self.children = children

@@ -37,6 +37,9 @@ class CollisionCondition(ConditionNode):
 
         return self.result(ConditionCode.NOT_TRIGGERED, "No collision detected")
 
+    def reset(self):
+        self.buffer.clear()
+
     def _contains_collision(self, payload, depth: int = 0) -> bool:
         if payload is None or depth > 4:
             return False

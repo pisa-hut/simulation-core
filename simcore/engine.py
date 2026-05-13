@@ -32,7 +32,8 @@ class SimulationEngine:
         logger.setLevel(getattr(logging, self.log_level, logging.INFO))
         self._dt_s = runtime_spec.get("dt", None)
         if self._dt_s is None:
-            logger.warning("No 'dt' specified in runtime_spec; defaulting to 0.01s")
+            logger.warning(
+                "No 'dt' specified in runtime_spec; defaulting to 0.01s")
             self._dt_s = 0.01
         self.dry_run = runtime_spec.get("dry_run", False)
 
@@ -72,15 +73,19 @@ class SimulationEngine:
 
         self.monitor = Monitor(
             config_path=monitor_spec.get("config_path", None),
+            log_file=str(self.output_base / "monitor_log.csv"),
             av=self.av,
             sim=self.sim,
         )
 
         if self.sps.param_range_file is not None:
-            logger.debug("Parameter range file provided: %s", self.sps.param_range_file)
+            logger.debug("Parameter range file provided: %s",
+                         self.sps.param_range_file)
             # param_sampler
-            module = importlib.import_module(sampler_spec["module_path"].split(":")[0])
-            sampler_class = getattr(module, sampler_spec["module_path"].split(":")[1])
+            module = importlib.import_module(
+                sampler_spec["module_path"].split(":")[0])
+            sampler_class = getattr(
+                module, sampler_spec["module_path"].split(":")[1])
             self.param_sampler = sampler_class(
                 param_range_file=self.sps.param_range_file,
                 past_results=None,
@@ -99,7 +104,8 @@ class SimulationEngine:
         """
         try:
             if self.param_sampler is not None:
-                logger.info("Running logical scenario with parameter sampling.")
+                logger.info(
+                    "Running logical scenario with parameter sampling.")
                 self.run_logical()
             else:
                 logger.info(
@@ -195,6 +201,9 @@ class SimulationEngine:
         logger.info("Resetting AV...")
         ctrl_for_sim = self.av.reset(output_related, sps, raw_obs)
 
+        logger.info("Resetting monitor...")
+        self.monitor.reset(output_related)
+
         dt_s = self._dt_s
         dt_ns = int(dt_s * 1e9)
 
@@ -208,6 +217,7 @@ class SimulationEngine:
         logger.info("Starting execution loop. using dt_s=%.3f", dt_s)
 
         real_start_time_s = time()
+        sim_time_need = 0
         while True:
             if self.monitor.should_stop():
                 logger.info("Monitor requested to stop the scenario.")
@@ -221,6 +231,7 @@ class SimulationEngine:
             raw_obs = self.sim.step(ctrl_for_sim, sim_time_ns)
             ctrl_for_sim = self.av.step(raw_obs, sim_time_ns)
             self.monitor.update(sim_time_ns, raw_obs, ctrl_for_sim)
+            self.monitor.log()
 
             sim_time_ns += dt_ns
 

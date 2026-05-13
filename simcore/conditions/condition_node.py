@@ -18,6 +18,10 @@ class ConditionNode(ABC):
     def evaluate(self) -> EvaluationResult:
         pass
 
+    @abstractmethod
+    def reset(self):
+        pass
+
     def result(self, code: ConditionCode, detail: str = "") -> EvaluationResult:
         return EvaluationResult(
             condition_name=self.name,

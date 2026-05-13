@@ -121,7 +121,7 @@ class SimWrapper:
             # StepResponse { repeated ObjectState objects }
             return resp.objects
         except grpc.RpcError as e:
-            raise RuntimeError(f"Step failed: {e.code().name} - {e.details()}") from e
+            raise RuntimeError(f"SimWrapper Step failed: {e.code().name} - {e.details()}") from e
 
     def stop(self):
         """

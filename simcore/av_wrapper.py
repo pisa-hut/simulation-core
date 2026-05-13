@@ -112,7 +112,7 @@ class AVWrapper:
             # StepResponse { repeated ObjectState objects }
             return resp.ctrl_cmd
         except grpc.RpcError as e:
-            raise RuntimeError(f"Step failed: {e.code().name} - {e.details()}") from e
+            raise RuntimeError(f"AVWrapper Step failed: {e.code().name} - {e.details()}") from e
 
     def stop(self):
         """

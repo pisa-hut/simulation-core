@@ -192,7 +192,8 @@ class SimulationEngine:
         raw_obs = None
 
         logger.info("Resetting simulator...")
-        raw_obs = self.sim.reset(output_related, sps, params)
+        runtime_frame = self.sim.reset(output_related, sps, params)
+        raw_obs = runtime_frame.objects if runtime_frame.objects else []
 
         logger.info("Resetting AV...")
         ctrl_for_sim = self.av.reset(output_related, sps, raw_obs)
@@ -224,9 +225,10 @@ class SimulationEngine:
                 dt_ns = int((t - prev) * 1e9)
                 prev = t
 
-            raw_obs = self.sim.step(ctrl_for_sim, sim_time_ns)
+            runtimeFrame = self.sim.step(ctrl_for_sim, sim_time_ns)
+            raw_obs = runtimeFrame.objects if runtimeFrame.objects else []
             ctrl_for_sim = self.av.step(raw_obs, sim_time_ns)
-            self.monitor.update(sim_time_ns, raw_obs, ctrl_for_sim)
+            self.monitor.update(sim_time_ns, runtimeFrame, ctrl_for_sim)
             # self.monitor.log()
 
             sim_time_ns += dt_ns

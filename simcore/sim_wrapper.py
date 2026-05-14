@@ -95,7 +95,7 @@ class SimWrapper:
         )
         try:
             resp = self._stub.Reset(req, timeout=self._timeout)
-            return resp.objects
+            return resp.frame
         except grpc.RpcError as e:
             raise RuntimeError(f"SimWrapper Reset failed: {e.code().name} - {e.details()}") from e
 
@@ -118,8 +118,7 @@ class SimWrapper:
         )
         try:
             resp = self._stub.Step(req, timeout=self._timeout)
-            # StepResponse { repeated ObjectState objects }
-            return resp.objects
+            return resp.frame
         except grpc.RpcError as e:
             raise RuntimeError(f"SimWrapper Step failed: {e.code().name} - {e.details()}") from e
 

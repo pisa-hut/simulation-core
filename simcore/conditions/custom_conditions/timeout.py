@@ -27,13 +27,13 @@ class TimeoutCondition(ConditionNode):
         self.buffer = deque(maxlen=1)
 
     def put(self, data):
-        self.buffer.append(data)
+        self.buffer.append(data[0])
 
     def evaluate(self) -> EvaluationResult:
         if not self.buffer:
             return self.result(ConditionCode.NOT_EVALUATED, "No data to evaluate")
 
-        data_time = self.buffer[0][0] / 1e6
+        data_time = self.buffer[0] / 1e6
 
         if data_time > self.timeout_threshold:
             return self.result(

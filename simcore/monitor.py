@@ -53,9 +53,9 @@ class Monitor:
         # )
         pass
 
-    def update(self, sim_time_ns: int, observation: dict, control: dict) -> None:
+    def update(self, sim_time_ns: int, runtime_frame: dict, control: dict) -> None:
         if self.root:
-            self.root.put((sim_time_ns, observation, control))
+            self.root.put((sim_time_ns, runtime_frame, control))
 
     def should_stop(self) -> bool:
         if self.av.should_quit():

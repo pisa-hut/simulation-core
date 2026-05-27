@@ -20,7 +20,7 @@ def load_condition_class(type_name: str):
         ) from exc
 
 
-def build_condition_tree(config: dict):
+def build_condition_tree(config: dict, context: dict | None = None):
     if not isinstance(config, dict):
         raise ValueError(f"Condition config must be a mapping, got: {config!r}")
     if "type" not in config:
@@ -29,15 +29,22 @@ def build_condition_tree(config: dict):
     node_type = config["type"].lower()
 
     if node_type == "and":
-        children = [build_condition_tree(child) for child in config.get("children", [])]
+        children = [
+            build_condition_tree(child, context=context) for child in config.get("children", [])
+        ]
         return AndNode(config, children)
 
     if node_type == "or":
-        children = [build_condition_tree(child) for child in config.get("children", [])]
+        children = [
+            build_condition_tree(child, context=context) for child in config.get("children", [])
+        ]
         return OrNode(config, children)
 
     if node_type in CONDITION_REGISTRY:
         condition_class = load_condition_class(node_type)
-        return condition_class(config)
+        condition_config = dict(config)
+        if context is not None:
+            condition_config["_context"] = context
+        return condition_class(condition_config)
 
     raise ValueError(f"Unknown condition type: {node_type}")

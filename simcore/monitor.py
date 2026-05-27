@@ -11,7 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 class Monitor:
-    def __init__(self, config_path: str | None, log_file: str, av: AVWrapper, sim: SimWrapper):
+    def __init__(
+        self,
+        config_path: str | None,
+        log_file: str,
+        av: AVWrapper,
+        sim: SimWrapper,
+        sps=None,
+        position_parser=None,
+    ):
         self.log_file = log_file
         # self.csv_writer = csv.writer(open(self.log_file, "w", newline=""))
         # header
@@ -37,7 +45,13 @@ class Monitor:
                 "Monitor config 'condition' must be a mapping describing a condition tree"
             )
 
-        self.root = build_condition_tree(condition_cfg)
+        self.root = build_condition_tree(
+            condition_cfg,
+            context={
+                "sps": sps,
+                "position_parser": position_parser,
+            },
+        )
         logger.debug("Built condition tree: %s", self.root)
 
     def _load_config(self, path: str) -> None:

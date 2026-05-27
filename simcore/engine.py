@@ -7,6 +7,7 @@ from typing import Any
 from simcore.av_wrapper import AVWrapper
 from simcore.monitor import Monitor
 from simcore.sim_wrapper import SimWrapper
+from simcore.utils.position_parser import PositionParser
 from simcore.utils.sps import ScenarioPack
 
 logging.basicConfig(
@@ -41,10 +42,16 @@ class SimulationEngine:
         self.output_base.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output base directory set to: {self.output_base}")
 
+        self.position_parser = PositionParser.from_specs(scenario_spec, map_spec)
         try:
-            self.sps = ScenarioPack.from_dict(scenario_spec, map_spec)
+            self.sps = ScenarioPack.from_dict(
+                scenario_spec,
+                map_spec,
+                position_parser=self.position_parser,
+            )
         except Exception as exc:
             logger.exception("Failed to create ScenarioPack from scenario and map specifications.")
+            self.position_parser.close()
             raise exc
 
         try:
@@ -54,6 +61,7 @@ class SimulationEngine:
             )
         except Exception as exc:
             logger.error("Simulator initialization failed")
+            self.position_parser.close()
             raise exc
 
         try:
@@ -64,6 +72,7 @@ class SimulationEngine:
             )
         except Exception as exc:
             logger.error("AV initialization failed")
+            self.position_parser.close()
             raise exc
 
         self.monitor = Monitor(
@@ -71,6 +80,8 @@ class SimulationEngine:
             log_file=str(self.output_base / "monitor_log.csv"),
             av=self.av,
             sim=self.sim,
+            sps=self.sps,
+            position_parser=self.position_parser,
         )
 
         if self.sps.param_range_file is not None:
@@ -243,6 +254,11 @@ class SimulationEngine:
 
             sim_time_need = time() - real_start_time_s
 
+            ### sleep to sync with real time if we're running faster than real time
+            # if sim_time_need < sim_time_ns / 1e9:
+            #     time_to_sleep_s = (sim_time_ns / 1e9) - sim_time_need
+            #     sleep(time_to_sleep_s/2)
+
         logger.info(
             f"Completed {sim_time_ns / 1e9:.2f} seconds scenario, using {sim_time_need:.2f} sec."
         )
@@ -256,3 +272,7 @@ class SimulationEngine:
             self.sim.stop()
         except Exception:
             logger.exception("sim.stop() failed")
+        try:
+            self.position_parser.close()
+        except Exception:
+            logger.exception("position_parser.close() failed")

@@ -7,7 +7,8 @@ from typing import Any
 import yaml
 from pisa_api import path_pb2, scenario_pb2
 
-from simcore.utils.position import Position, PositionFactory
+from simcore.utils.position import Position
+from simcore.utils.position_parser import PositionParser
 
 
 @dataclass
@@ -41,12 +42,7 @@ class EgoConfig:
     spawn: SpawnConfig = field(default=None)
 
     @classmethod
-    def from_dict(cls, ego: dict[str, Any], xodr_path: Path, rmlib_path: Path) -> EgoConfig:
-        position_factory = PositionFactory(
-            lib_path=rmlib_path.resolve(),
-            xodr_path=xodr_path.resolve(),
-        )
-
+    def from_dict(cls, ego: dict[str, Any], position_parser: PositionParser) -> EgoConfig:
         try:
             target_speed = float(ego["target_speed"])
         except KeyError as exc:
@@ -61,26 +57,9 @@ class EgoConfig:
         except KeyError as exc:
             raise ValueError("ego.position not defined") from exc
 
-        if goal_raw["type"] == "LanePosition":
-            goal_pos = position_factory.from_lane(
-                road_id=int(goal_raw["value"][0]),
-                lane_id=int(goal_raw["value"][1]),
-                s=float(goal_raw["value"][2]),
-                offset=(float(goal_raw["value"][3]) if len(goal_raw["value"]) > 3 else 0.0),
-            )
-        elif goal_raw["type"] == "WorldPosition":
-            goal_pos = position_factory.from_world(
-                x=float(goal_raw["value"][0]),
-                y=float(goal_raw["value"][1]),
-                z=float(goal_raw["value"][2]),
-                h=float(goal_raw["value"][3]) if len(goal_raw["value"]) > 3 else 0.0,
-                p=float(goal_raw["value"][4]) if len(goal_raw["value"]) > 4 else 0.0,
-                r=float(goal_raw["value"][5]) if len(goal_raw["value"]) > 5 else 0.0,
-            )
-
+        goal_pos = position_parser.parse(goal_raw, field_name="ego.position")
         goal = GoalConfig(position=goal_pos)
 
-        position_factory.close()
         return cls(
             target_speed=target_speed,
             # spawn=spawn,
@@ -112,15 +91,27 @@ class ScenarioPack:
     timeout_ns: int = field(default=int(3e11))  # default 300 seconds
 
     @classmethod
-    def from_dict(cls, scenario_spec: dict[str, Any], map_spec: dict[str, Any]) -> ScenarioPack:
+    def from_dict(
+        cls,
+        scenario_spec: dict[str, Any],
+        map_spec: dict[str, Any],
+        position_parser: PositionParser | None = None,
+    ) -> ScenarioPack:
         name = scenario_spec["title"]
         scenario_folder = scenario_spec["scenario_path"]
         map_name = map_spec["name"]
-        ego = EgoConfig.from_dict(
-            scenario_spec["goal_config"],
-            xodr_path=Path(f"{map_spec['xodr_path']}/{map_name}.xodr").resolve(),
-            rmlib_path=Path(scenario_spec.get("rmlib_path", "libesminiRMLib.so")).resolve(),
-        )
+        owns_position_parser = position_parser is None
+        if position_parser is None:
+            position_parser = PositionParser.from_specs(scenario_spec, map_spec)
+        try:
+            ego = EgoConfig.from_dict(
+                scenario_spec["goal_config"],
+                position_parser=position_parser,
+            )
+        finally:
+            if owns_position_parser:
+                position_parser.close()
+
         pr_fname = Path(scenario_folder) / f"{name}_param.xosc"
         param_range_file = pr_fname if pr_fname.exists() else None
 

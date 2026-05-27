@@ -162,7 +162,7 @@ class ReachTargetPositionCondition(ConditionNode):
             if hasattr(obj, field_name):
                 try:
                     return int(getattr(obj, field_name))
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     break
         return fallback_index
 

@@ -11,6 +11,7 @@ class LogStream:
     name: str
     filename: str
     fields: tuple[str, ...]
+    append: bool = False
 
 
 class LogManager:
@@ -71,9 +72,11 @@ class LogManager:
             raise ValueError(f"Duplicate field in monitor log stream: {stream.name}")
 
         path = self.output_dir / stream.filename
-        file = path.open("w", newline="")
+        should_write_header = not stream.append or not path.exists() or path.stat().st_size == 0
+        file = path.open("a" if stream.append else "w", newline="")
         writer = csv.DictWriter(file, fieldnames=list(stream.fields), extrasaction="raise")
-        writer.writeheader()
+        if should_write_header:
+            writer.writeheader()
 
         self._files[stream.name] = file
         self._writers[stream.name] = writer

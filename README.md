@@ -76,14 +76,14 @@ A runner spec has these top-level sections:
   "runtime": {
     "dt": 0.01,
     "log_level": "info",
-    "dry_run": false
+    "overwrite": false
   }
 }
 ```
 
 - `dt`: simulation step size in seconds. If omitted, defaults to `0.01`.
 - `log_level`: Python logging level for the runner.
-- `dry_run`: when `true`, the scenario runs even if the last summary row is already `finished`.
+- `overwrite`: when `true`, run even if the last summary row is already `finished`. When `false`, finished runs are skipped.
 
 ### `task`
 
@@ -96,7 +96,7 @@ A runner spec has these top-level sections:
 }
 ```
 
-- `job_id`: identifier written to status files.
+- `job_id`: identifier written to `run.job_id` in `summary.csv`.
 - `output_dir`: base directory for all concrete scenario outputs.
 
 For a concrete scenario, output is written under:
@@ -221,9 +221,9 @@ The sampler parses OpenSCENARIO parameter value distributions and returns one pa
 
 For each concrete scenario, `SimulationEngine.run_concrete()` does:
 
-1. `sim.reset(output_related, sps, params)`
-2. `av.reset(output_related, sps, raw_obs)`
-3. `monitor.reset(output_related)`
+1. `monitor.reset(output_related, params=params)`
+2. `sim.reset(output_related, sps, params)`
+3. `av.reset(output_related, sps, raw_obs)`
 4. Loop:
    - `monitor.should_stop()`
    - `sim.step(ctrl_for_sim, sim_time_ns)`
@@ -476,15 +476,15 @@ Built-in summary recorders:
 
 | Type | Fields | Notes |
 | --- | --- | --- |
-| `basic_summary` | `status`, `stop_reason`, `total_steps`, `final_sim_time_ms`, `params` | Added automatically by default as `run.*`. |
+| `basic_summary` | `status`, `stop_reason`, `total_steps`, `final_sim_time_ms`, `wall_time_ms`, `job_id`, `params` | Added automatically by default as `run.*`. |
 | `min_ttc` | `min_ttc_s` | Tracks minimum finite TTC for an actor pair. |
 | `max_speed` | `max_speed_mps` | Tracks maximum speed for one actor. |
 
 `summary.csv` example:
 
 ```csv
-run.status,run.stop_reason,run.total_steps,run.final_sim_time_ms,run.params,ego_to_agent_1.min_ttc_s,ego.max_speed_mps
-finished,completed,600,6000.000000,"{""speed"": ""10""}",1.250000,14.500000
+run.status,run.stop_reason,run.total_steps,run.final_sim_time_ms,run.wall_time_ms,run.job_id,run.params,ego_to_agent_1.min_ttc_s,ego.max_speed_mps
+finished,completed,600,6000.000000,8100.000000,0,"{""speed"": ""10""}",1.250000,14.500000
 ```
 
 ## Built-in Metrics
@@ -505,19 +505,11 @@ The purpose is to avoid coupling conditions to logging while still sharing calcu
 
 ## Output Status Files
 
-Each concrete run has a status directory for errors:
+Completion and failure history are tracked by `monitor/summary.csv`.
 
-```text
-status/error.txt
-```
+If the last `run.status` is `finished`, `concrete_wrapper()` skips the run when `runtime.overwrite` is `false`. If `runtime.overwrite` is `true`, the runner appends a new attempt regardless of previous status. If the last status is `fail`, the runner attempts the scenario again and appends another summary row.
 
-Completion is tracked by the last row in `monitor/summary.csv`. If the last `run.status` is `finished`, `concrete_wrapper()` skips the run unless `runtime.dry_run` is `true`. If the last status is `fail`, the runner attempts the scenario again.
-
-If execution fails, `error.txt` receives:
-
-```text
-Error at <wall_time> by job <job_id>: <ExceptionType>: <message>
-```
+The runner no longer creates `status/completed.txt` or `status/error.txt`. Existing status directories from older runs are not removed automatically.
 
 ## Extending Conditions
 

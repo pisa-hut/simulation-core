@@ -1,4 +1,5 @@
 import csv
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -62,6 +63,13 @@ class FakeCollision:
 def read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(newline="") as file:
         return list(csv.DictReader(file))
+
+
+def assert_basic_summary_fields(row: dict[str, str], *, status: str, reason: str) -> None:
+    assert row["run.status"] == status
+    assert row["run.stop_reason"] == reason
+    assert row["run.job_id"] == "unknown_job"
+    assert float(row["run.wall_time_ms"]) >= 0
 
 
 def test_monitor_merges_frame_recorders_every_n_steps(tmp_path: Path) -> None:
@@ -130,16 +138,11 @@ logging:
     assert [row["ego_to_agent_1.ttc_s"] for row in rows] == ["10.000000", "8.000000"]
 
     summary_rows = read_csv(output_base / "case_1" / "monitor" / "summary.csv")
-    assert summary_rows == [
-        {
-            "run.status": "finished",
-            "run.stop_reason": "condition:timeout",
-            "run.total_steps": "3",
-            "run.final_sim_time_ms": "20.000000",
-            "run.error_type": "",
-            "run.error_message": "",
-        }
-    ]
+    assert len(summary_rows) == 1
+    assert_basic_summary_fields(summary_rows[0], status="finished", reason="condition:timeout")
+    assert summary_rows[0]["run.total_steps"] == "3"
+    assert summary_rows[0]["run.final_sim_time_ms"] == "20.000000"
+    assert summary_rows[0]["run.params"] == "{}"
 
 
 def test_monitor_writes_agent_states_as_long_table(tmp_path: Path) -> None:
@@ -265,7 +268,7 @@ logging:
         sim=FakeEndpoint(),
     )
 
-    monitor.reset("case_1")
+    monitor.reset("case_1", params={"speed": "10", "weather": "clear"})
     monitor.update(
         0,
         SimpleNamespace(
@@ -289,17 +292,48 @@ logging:
     monitor.finalize(status="finished", reason="completed")
 
     rows = read_csv(output_base / "case_1" / "monitor" / "summary.csv")
-    assert rows == [
-        {
-            "run.status": "finished",
-            "run.stop_reason": "completed",
-            "run.total_steps": "2",
-            "run.final_sim_time_ms": "1.000000",
-            "run.error_type": "",
-            "run.error_message": "",
-            "ego_to_agent_1.min_ttc_s": "1.250000",
-            "ego.max_speed_mps": "4.000000",
-        }
+    assert len(rows) == 1
+    assert_basic_summary_fields(rows[0], status="finished", reason="completed")
+    assert rows[0]["run.total_steps"] == "2"
+    assert rows[0]["run.final_sim_time_ms"] == "1.000000"
+    assert rows[0]["run.params"] == json.dumps(
+        {"speed": "10", "weather": "clear"}, sort_keys=True
+    )
+    assert rows[0]["ego_to_agent_1.min_ttc_s"] == "1.250000"
+    assert rows[0]["ego.max_speed_mps"] == "4.000000"
+
+
+def test_monitor_appends_summary_and_checks_last_finished_status(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.finalize(status="fail", reason="RuntimeError: failed once")
+    assert monitor.has_finished_summary("case_1") is False
+
+    monitor.reset("case_1")
+    monitor.finalize(status="finished", reason="completed")
+    assert monitor.has_finished_summary("case_1") is True
+
+    rows = read_csv(output_base / "case_1" / "monitor" / "summary.csv")
+    assert [row["run.status"] for row in rows] == ["fail", "finished"]
+    assert [row["run.stop_reason"] for row in rows] == [
+        "RuntimeError: failed once",
+        "completed",
     ]
 
 

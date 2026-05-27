@@ -13,7 +13,9 @@ class SummaryContext:
     stop_reason: str
     total_steps: int
     final_sim_time_ms: float
-    error: BaseException | None = None
+    wall_time_ms: float
+    params: dict[str, Any]
+    job_id: str
 
 
 class SummaryRecorder(ABC):

@@ -35,7 +35,7 @@ class SimulationEngine:
         if self._dt_s is None:
             logger.warning("No 'dt' specified in runtime_spec; defaulting to 0.01s")
             self._dt_s = 0.01
-        self.dry_run = runtime_spec.get("dry_run", False)
+        self.overwrite = bool(runtime_spec.get("overwrite", False))
 
         self.job_id = task_spec.get("job_id", "unknown_job")
         self.output_base = Path(task_spec.get("output_dir", "./outputs")).expanduser().resolve()
@@ -82,6 +82,7 @@ class SimulationEngine:
             sim=self.sim,
             sps=self.sps,
             position_parser=self.position_parser,
+            job_id=self.job_id,
         )
 
         if self.sps.param_range_file is not None:
@@ -159,13 +160,9 @@ class SimulationEngine:
         sps: ScenarioPack,
         params: dict[str, Any] | None = None,
     ) -> None:
-        status_dir = Path(self.output_base / output_related / "status")
-        status_dir.mkdir(parents=True, exist_ok=True)
-
-        completed_file = status_dir / "completed.txt"
-        if completed_file.exists() and not self.dry_run:
+        if self.monitor.has_finished_summary(output_related) and not self.overwrite:
             logger.warning(
-                f"Completed file already exists for {output_related}. Skipping execution."
+                f"Finished summary already exists for {output_related}. Skipping execution."
             )
             return
 
@@ -173,21 +170,11 @@ class SimulationEngine:
             self.run_concrete(output_related, sps, params)
         except Exception as e:
             logger.error(f"Error in concrete scenario execution for {output_related}: {e}")
-            with open(status_dir / "error.txt", "a") as f:
-                f.write(f"Error at {time()} by job {self.job_id}: {type(e).__name__}: {str(e)}\n")
             raise e
         else:
-            # Count the execution as soon as run_concrete returned cleanly,
-            # before any IO that might fail. Dry runs still count — the
-            # scenario did run, we're just not persisting completed.txt.
+            # Count the execution as soon as run_concrete returned cleanly.
+            # Dry runs still count because the scenario did run.
             self.completed_concrete_runs += 1
-            if self.dry_run:
-                logger.info(
-                    f"Dry run mode enabled; skipping writing completed file for {output_related}."
-                )
-                return
-            with open(completed_file, "w") as f:
-                f.write(f"Completed at {time()} by job {self.job_id}\n")
             logger.info(f"Scenario {output_related} completed successfully.")
 
     def run_concrete(
@@ -203,15 +190,15 @@ class SimulationEngine:
         stop_reason = ""
 
         try:
+            logger.info("Resetting monitor...")
+            self.monitor.reset(output_related, params=params)
+
             logger.info("Resetting simulator...")
             runtime_frame = self.sim.reset(output_related, sps, params)
             raw_obs = runtime_frame.objects if runtime_frame.objects else []
 
             logger.info("Resetting AV...")
             ctrl_for_sim = self.av.reset(output_related, sps, raw_obs)
-
-            logger.info("Resetting monitor...")
-            self.monitor.reset(output_related)
 
             dt_s = self._dt_s
             dt_ns = int(dt_s * 1e9)
@@ -266,7 +253,10 @@ class SimulationEngine:
             )
         except Exception as exc:
             try:
-                self.monitor.finalize(status="error", reason="error", error=exc)
+                self.monitor.finalize(
+                    status="fail",
+                    reason=f"{type(exc).__name__}: {exc}",
+                )
             except Exception:
                 logger.exception("monitor.finalize() failed after scenario error")
             raise

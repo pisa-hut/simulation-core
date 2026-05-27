@@ -1,5 +1,7 @@
+import csv
 import logging
 from pathlib import Path
+from time import time
 from typing import Any
 
 import yaml
@@ -29,10 +31,12 @@ class Monitor:
         sim: SimWrapper,
         sps=None,
         position_parser=None,
+        job_id: str = "unknown_job",
     ):
         self.log_file = log_file
         self.av = av
         self.sim = sim
+        self.job_id = job_id
 
         self.cfg: dict | None = None
         self.root: ConditionNode | None = None
@@ -52,6 +56,8 @@ class Monitor:
         self.step_index = 0
         self.final_sim_time_ns = 0
         self.stop_reason = ""
+        self.params: dict[str, Any] = {}
+        self.wall_start_time_s: float | None = None
 
         if not config_path:
             logger.warning("No monitor config_path provided; condition monitoring is disabled.")
@@ -201,11 +207,13 @@ class Monitor:
                 return True
         return False
 
-    def reset(self, output_related: str):
+    def reset(self, output_related: str, params: dict[str, Any] | None = None):
         self._close_log_manager()
         self.step_index = 0
         self.final_sim_time_ns = 0
         self.stop_reason = ""
+        self.params = dict(params or {})
+        self.wall_start_time_s = time()
 
         if self.root:
             self.root.reset()
@@ -230,7 +238,6 @@ class Monitor:
         self,
         status: str,
         reason: str = "",
-        error: BaseException | None = None,
     ) -> None:
         if not self.log_manager:
             return
@@ -240,11 +247,28 @@ class Monitor:
                 for row in recorder.finalize():
                     self.log_manager.write(row.stream, row.row)
 
-            summary_row = self._summary_row(status=status, reason=reason, error=error)
+            summary_row = self._summary_row(status=status, reason=reason)
             if summary_row is not None:
                 self.log_manager.write(SUMMARY_STREAM, summary_row)
         finally:
             self._close_log_manager()
+
+    def has_finished_summary(self, output_related: str) -> bool:
+        summary_path = self.summary_path(output_related)
+        if summary_path is None or not summary_path.exists():
+            return False
+
+        with summary_path.open(newline="") as file:
+            rows = list(csv.DictReader(file))
+        if not rows:
+            return False
+
+        return rows[-1].get("run.status") == "finished"
+
+    def summary_path(self, output_related: str) -> Path | None:
+        if not self.summary_logging_enabled:
+            return None
+        return Path(self.log_file).parent / output_related / self.logging_output_dir / self.summary_output
 
     def _log_streams(self) -> list[LogStream]:
         streams = []
@@ -254,6 +278,7 @@ class Monitor:
                     name=SUMMARY_STREAM,
                     filename=self.summary_output,
                     fields=self._summary_fields(),
+                    append=True,
                 )
             )
         if self.frame_logging_enabled:
@@ -278,7 +303,6 @@ class Monitor:
         self,
         status: str,
         reason: str,
-        error: BaseException | None,
     ) -> dict[str, Any] | None:
         if not self.summary_logging_enabled:
             return None
@@ -288,7 +312,9 @@ class Monitor:
             stop_reason=reason or self.stop_reason,
             total_steps=self.step_index,
             final_sim_time_ms=self.final_sim_time_ns / 1e6,
-            error=error,
+            wall_time_ms=self._wall_time_ms(),
+            params=self.params,
+            job_id=self.job_id,
         )
         row = {field: None for field in self._summary_fields()}
         for recorder in self.summary_recorders:
@@ -336,6 +362,11 @@ class Monitor:
         if self.log_manager:
             self.log_manager.close()
             self.log_manager = None
+
+    def _wall_time_ms(self) -> float:
+        if self.wall_start_time_s is None:
+            return 0.0
+        return (time() - self.wall_start_time_s) * 1000.0
 
     @staticmethod
     def _summary_recorder_configs(

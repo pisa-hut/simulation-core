@@ -83,7 +83,7 @@ A runner spec has these top-level sections:
 
 - `dt`: simulation step size in seconds. If omitted, defaults to `0.01`.
 - `log_level`: Python logging level for the runner.
-- `dry_run`: when `true`, the scenario runs but `completed.txt` is not written.
+- `dry_run`: when `true`, the scenario runs even if the last summary row is already `finished`.
 
 ### `task`
 
@@ -234,10 +234,10 @@ For each concrete scenario, `SimulationEngine.run_concrete()` does:
 If an exception occurs, the engine tries:
 
 ```python
-monitor.finalize(status="error", reason="error", error=exc)
+monitor.finalize(status="fail", reason=f"{type(exc).__name__}: {exc}")
 ```
 
-The original exception is re-raised even if monitor finalization fails.
+The original exception is re-raised even if monitor finalization fails. `summary.csv` is append-only, so failed attempts and later successful retries remain visible in run history.
 
 ## Monitor Config
 
@@ -476,15 +476,15 @@ Built-in summary recorders:
 
 | Type | Fields | Notes |
 | --- | --- | --- |
-| `basic_summary` | `status`, `stop_reason`, `total_steps`, `final_sim_time_ms`, `error_type`, `error_message` | Added automatically by default as `run.*`. |
+| `basic_summary` | `status`, `stop_reason`, `total_steps`, `final_sim_time_ms`, `params` | Added automatically by default as `run.*`. |
 | `min_ttc` | `min_ttc_s` | Tracks minimum finite TTC for an actor pair. |
 | `max_speed` | `max_speed_mps` | Tracks maximum speed for one actor. |
 
 `summary.csv` example:
 
 ```csv
-run.status,run.stop_reason,run.total_steps,run.final_sim_time_ms,run.error_type,run.error_message,ego_to_agent_1.min_ttc_s,ego.max_speed_mps
-finished,completed,600,6000.000000,,,1.250000,14.500000
+run.status,run.stop_reason,run.total_steps,run.final_sim_time_ms,run.params,ego_to_agent_1.min_ttc_s,ego.max_speed_mps
+finished,completed,600,6000.000000,"{""speed"": ""10""}",1.250000,14.500000
 ```
 
 ## Built-in Metrics
@@ -505,14 +505,13 @@ The purpose is to avoid coupling conditions to logging while still sharing calcu
 
 ## Output Status Files
 
-Each concrete run has:
+Each concrete run has a status directory for errors:
 
 ```text
-status/completed.txt
 status/error.txt
 ```
 
-`completed.txt` is written only when the concrete scenario completes successfully and `runtime.dry_run` is `false`.
+Completion is tracked by the last row in `monitor/summary.csv`. If the last `run.status` is `finished`, `concrete_wrapper()` skips the run unless `runtime.dry_run` is `true`. If the last status is `fail`, the runner attempts the scenario again.
 
 If execution fails, `error.txt` receives:
 

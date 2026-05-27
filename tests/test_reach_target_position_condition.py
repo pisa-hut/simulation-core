@@ -43,9 +43,7 @@ class FakePositionParser:
 
 def test_reach_target_position_triggers_for_ego_with_sps_goal() -> None:
     sps = SimpleNamespace(
-        ego=SimpleNamespace(
-            goal=SimpleNamespace(position=SimpleNamespace(x=10.0, y=20.0, z=0.0))
-        )
+        ego=SimpleNamespace(goal=SimpleNamespace(position=SimpleNamespace(x=10.0, y=20.0, z=0.0)))
     )
     condition = ReachTargetPositionCondition(
         {

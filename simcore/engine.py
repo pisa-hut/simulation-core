@@ -200,64 +200,76 @@ class SimulationEngine:
         Run a single concrete scenario with the given parameters.
         """
 
-        raw_obs = None
+        stop_reason = ""
 
-        logger.info("Resetting simulator...")
-        runtime_frame = self.sim.reset(output_related, sps, params)
-        raw_obs = runtime_frame.objects if runtime_frame.objects else []
+        try:
+            logger.info("Resetting simulator...")
+            runtime_frame = self.sim.reset(output_related, sps, params)
+            raw_obs = runtime_frame.objects if runtime_frame.objects else []
 
-        logger.info("Resetting AV...")
-        ctrl_for_sim = self.av.reset(output_related, sps, raw_obs)
+            logger.info("Resetting AV...")
+            ctrl_for_sim = self.av.reset(output_related, sps, raw_obs)
 
-        logger.info("Resetting monitor...")
-        self.monitor.reset(output_related)
+            logger.info("Resetting monitor...")
+            self.monitor.reset(output_related)
 
-        dt_s = self._dt_s
-        dt_ns = int(dt_s * 1e9)
+            dt_s = self._dt_s
+            dt_ns = int(dt_s * 1e9)
 
-        use_real_time = False
-        if dt_ns <= 0:  # use real-time stepping
-            dt_ns = 0
-            use_real_time = True
-            prev = time()
+            use_real_time = False
+            if dt_ns <= 0:  # use real-time stepping
+                dt_ns = 0
+                use_real_time = True
+                prev = time()
 
-        sim_time_ns = 0  # Simulation time in nanoseconds
-        logger.info("Starting execution loop. using dt_s=%.3f", dt_s)
+            sim_time_ns = 0  # Simulation time in nanoseconds
+            logger.info("Starting execution loop. using dt_s=%.3f", dt_s)
 
-        real_start_time_s = time()
-        sim_time_need = 0
-        while True:
-            if self.monitor.should_stop():
-                logger.info("Monitor requested to stop the scenario.")
-                break
+            real_start_time_s = time()
+            sim_time_need = 0
+            while True:
+                if self.monitor.should_stop():
+                    stop_reason = self.monitor.stop_reason or "monitor_stop"
+                    logger.info("Monitor requested to stop the scenario.")
+                    break
 
-            if use_real_time:
-                t = time()
-                dt_ns = int((t - prev) * 1e9)
-                prev = t
+                if use_real_time:
+                    t = time()
+                    dt_ns = int((t - prev) * 1e9)
+                    prev = t
 
-            runtimeFrame = self.sim.step(ctrl_for_sim, sim_time_ns)
-            raw_obs = runtimeFrame.objects if runtimeFrame.objects else []
-            ctrl_for_sim = self.av.step(raw_obs, sim_time_ns)
-            self.monitor.update(sim_time_ns, runtimeFrame, ctrl_for_sim)
-            # self.monitor.log()
+                runtimeFrame = self.sim.step(ctrl_for_sim, sim_time_ns)
+                raw_obs = runtimeFrame.objects if runtimeFrame.objects else []
+                ctrl_for_sim = self.av.step(raw_obs, sim_time_ns)
+                self.monitor.update(sim_time_ns, runtimeFrame, ctrl_for_sim)
 
-            sim_time_ns += dt_ns
+                sim_time_ns += dt_ns
 
-            cur_time_s = time()
-            time_use_s = cur_time_s - real_start_time_s
+                cur_time_s = time()
+                time_use_s = cur_time_s - real_start_time_s
 
-            print(
-                f"time use = {time_use_s:.2f} s, sim_time = {sim_time_ns / 1e9:.2f} s",
-                end="\r",
+                print(
+                    f"time use = {time_use_s:.2f} s, sim_time = {sim_time_ns / 1e9:.2f} s",
+                    end="\r",
+                )
+
+                sim_time_need = time() - real_start_time_s
+
+                ### sleep to sync with real time if we're running faster than real time
+                # if sim_time_need < sim_time_ns / 1e9:
+                #     time_to_sleep_s = (sim_time_ns / 1e9) - sim_time_need
+                #     sleep(time_to_sleep_s/2)
+
+            self.monitor.finalize(
+                status="finished",
+                reason=stop_reason or "completed",
             )
-
-            sim_time_need = time() - real_start_time_s
-
-            ### sleep to sync with real time if we're running faster than real time
-            # if sim_time_need < sim_time_ns / 1e9:
-            #     time_to_sleep_s = (sim_time_ns / 1e9) - sim_time_need
-            #     sleep(time_to_sleep_s/2)
+        except Exception as exc:
+            try:
+                self.monitor.finalize(status="error", reason="error", error=exc)
+            except Exception:
+                logger.exception("monitor.finalize() failed after scenario error")
+            raise
 
         logger.info(
             f"Completed {sim_time_ns / 1e9:.2f} seconds scenario, using {sim_time_need:.2f} sec."

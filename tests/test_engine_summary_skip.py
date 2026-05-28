@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -66,3 +67,34 @@ def test_concrete_wrapper_does_not_create_status_dir_on_failure(tmp_path: Path) 
         engine.concrete_wrapper("case_1", sps=None)
 
     assert not (tmp_path / "outputs" / "case_1" / "status").exists()
+
+
+class KeyboardInterruptMonitor(FakeMonitor):
+    def __init__(self):
+        super().__init__(finished=False)
+        self.finalize_calls = []
+
+    def reset(self, output_related, params=None, overwrite_summary=False):
+        return None
+
+    def finalize(self, status: str, reason: str = ""):
+        self.finalize_calls.append((status, reason))
+
+
+def test_run_concrete_records_keyboard_interrupt_and_reraises(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    monitor = KeyboardInterruptMonitor()
+    engine.monitor = monitor
+
+    def sim_reset(output_related, sps, params):
+        raise KeyboardInterrupt
+
+    engine.sim = SimpleNamespace(reset=sim_reset)
+    engine.av = SimpleNamespace()
+
+    with pytest.raises(KeyboardInterrupt):
+        engine.run_concrete("case_1", sps=None)
+
+    assert monitor.finalize_calls == [
+        ("fail", "KeyboardInterrupt: interrupted by user"),
+    ]

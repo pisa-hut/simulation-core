@@ -58,6 +58,7 @@ class Monitor:
         self.stop_reason = ""
         self.params: dict[str, Any] = {}
         self.wall_start_time_s: float | None = None
+        self.overwrite_summary = False
 
         if not config_path:
             logger.warning("No monitor config_path provided; condition monitoring is disabled.")
@@ -187,14 +188,6 @@ class Monitor:
         self.step_index += 1
 
     def should_stop(self) -> bool:
-        if self.av.should_quit():
-            self.stop_reason = "AV requested scenario stop via should_quit()"
-            logger.info(self.stop_reason)
-            return True
-        if self.sim.should_quit():
-            self.stop_reason = "Simulator requested scenario stop via should_quit()"
-            logger.info(self.stop_reason)
-            return True
         if self.root:
             result = self.root.evaluate()
             if result.code == ConditionCode.TRIGGERED:
@@ -205,15 +198,29 @@ class Monitor:
                     self.stop_reason,
                 )
                 return True
+        if self.av.should_quit():
+            self.stop_reason = "AV requested scenario stop via should_quit()"
+            logger.info(self.stop_reason)
+            return True
+        if self.sim.should_quit():
+            self.stop_reason = "Simulator requested scenario stop via should_quit()"
+            logger.info(self.stop_reason)
+            return True
         return False
 
-    def reset(self, output_related: str, params: dict[str, Any] | None = None):
+    def reset(
+        self,
+        output_related: str,
+        params: dict[str, Any] | None = None,
+        overwrite_summary: bool = False,
+    ):
         self._close_log_manager()
         self.step_index = 0
         self.final_sim_time_ns = 0
         self.stop_reason = ""
         self.params = dict(params or {})
         self.wall_start_time_s = time()
+        self.overwrite_summary = overwrite_summary
 
         if self.root:
             self.root.reset()
@@ -268,7 +275,12 @@ class Monitor:
     def summary_path(self, output_related: str) -> Path | None:
         if not self.summary_logging_enabled:
             return None
-        return Path(self.log_file).parent / output_related / self.logging_output_dir / self.summary_output
+        return (
+            Path(self.log_file).parent
+            / output_related
+            / self.logging_output_dir
+            / self.summary_output
+        )
 
     def _log_streams(self) -> list[LogStream]:
         streams = []
@@ -278,7 +290,7 @@ class Monitor:
                     name=SUMMARY_STREAM,
                     filename=self.summary_output,
                     fields=self._summary_fields(),
-                    append=True,
+                    append=not self.overwrite_summary,
                 )
             )
         if self.frame_logging_enabled:

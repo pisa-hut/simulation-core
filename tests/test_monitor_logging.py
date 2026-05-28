@@ -296,9 +296,7 @@ logging:
     assert_basic_summary_fields(rows[0], status="finished", reason="completed")
     assert rows[0]["run.total_steps"] == "2"
     assert rows[0]["run.final_sim_time_ms"] == "1.000000"
-    assert rows[0]["run.params"] == json.dumps(
-        {"speed": "10", "weather": "clear"}, sort_keys=True
-    )
+    assert rows[0]["run.params"] == json.dumps({"speed": "10", "weather": "clear"}, sort_keys=True)
     assert rows[0]["ego_to_agent_1.min_ttc_s"] == "1.250000"
     assert rows[0]["ego.max_speed_mps"] == "4.000000"
 
@@ -335,6 +333,35 @@ logging:
         "RuntimeError: failed once",
         "completed",
     ]
+
+
+def test_monitor_overwrite_summary_replaces_previous_history(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.finalize(status="finished", reason="first run")
+
+    monitor.reset("case_1", overwrite_summary=True)
+    monitor.finalize(status="fail", reason="RuntimeError: failed overwrite")
+
+    rows = read_csv(output_base / "case_1" / "monitor" / "summary.csv")
+    assert [row["run.status"] for row in rows] == ["fail"]
+    assert [row["run.stop_reason"] for row in rows] == ["RuntimeError: failed overwrite"]
 
 
 def test_monitor_logging_disabled_does_not_create_monitor_output(tmp_path: Path) -> None:

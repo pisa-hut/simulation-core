@@ -83,7 +83,7 @@ A runner spec has these top-level sections:
 
 - `dt`: simulation step size in seconds. If omitted, defaults to `0.01`.
 - `log_level`: Python logging level for the runner.
-- `overwrite`: when `true`, run even if the last summary row is already `finished`. When `false`, finished runs are skipped.
+- `overwrite`: when `true`, run even if the last summary row is already `finished` and overwrite the previous `summary.csv` history for that concrete run. When `false`, finished runs are skipped and failed retries append new summary rows.
 
 ### `task`
 
@@ -237,7 +237,7 @@ If an exception occurs, the engine tries:
 monitor.finalize(status="fail", reason=f"{type(exc).__name__}: {exc}")
 ```
 
-The original exception is re-raised even if monitor finalization fails. `summary.csv` is append-only, so failed attempts and later successful retries remain visible in run history.
+The original exception is re-raised even if monitor finalization fails. When `runtime.overwrite` is `false`, failed attempts and later successful retries remain visible in `summary.csv`. When `runtime.overwrite` is `true`, the new attempt replaces the previous summary history.
 
 ## Monitor Config
 
@@ -507,7 +507,7 @@ The purpose is to avoid coupling conditions to logging while still sharing calcu
 
 Completion and failure history are tracked by `monitor/summary.csv`.
 
-If the last `run.status` is `finished`, `concrete_wrapper()` skips the run when `runtime.overwrite` is `false`. If `runtime.overwrite` is `true`, the runner appends a new attempt regardless of previous status. If the last status is `fail`, the runner attempts the scenario again and appends another summary row.
+If the last `run.status` is `finished`, `concrete_wrapper()` skips the run when `runtime.overwrite` is `false`. If the last status is `fail`, the runner attempts the scenario again and appends another summary row. If `runtime.overwrite` is `true`, the runner ignores previous status and overwrites the existing `summary.csv` with the new attempt, whether that attempt finishes or fails.
 
 The runner no longer creates `status/completed.txt` or `status/error.txt`. Existing status directories from older runs are not removed automatically.
 

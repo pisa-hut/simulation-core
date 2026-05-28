@@ -77,7 +77,4 @@ condition:
     - type: reach_target_position
       name: ego_reaches_goal
       target: ego
-      target_position:
-        type: WorldPosition
-        value: [6, 2950]
-      distance_threshold_m: 0.5
+      distance_threshold_m: 2.0

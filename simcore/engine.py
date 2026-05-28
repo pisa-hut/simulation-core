@@ -191,7 +191,11 @@ class SimulationEngine:
 
         try:
             logger.info("Resetting monitor...")
-            self.monitor.reset(output_related, params=params)
+            self.monitor.reset(
+                output_related,
+                params=params,
+                overwrite_summary=self.overwrite,
+            )
 
             logger.info("Resetting simulator...")
             runtime_frame = self.sim.reset(output_related, sps, params)
@@ -217,7 +221,7 @@ class SimulationEngine:
             while True:
                 if self.monitor.should_stop():
                     stop_reason = self.monitor.stop_reason or "monitor_stop"
-                    logger.info("Monitor requested to stop the scenario.")
+                    logger.info(f"Monitor requested to stop ({stop_reason})")
                     break
 
                 if use_real_time:
@@ -251,6 +255,15 @@ class SimulationEngine:
                 status="finished",
                 reason=stop_reason or "completed",
             )
+        except KeyboardInterrupt:
+            try:
+                self.monitor.finalize(
+                    status="fail",
+                    reason="KeyboardInterrupt: interrupted by user",
+                )
+            except Exception:
+                logger.exception("monitor.finalize() failed after keyboard interrupt")
+            raise
         except Exception as exc:
             try:
                 self.monitor.finalize(

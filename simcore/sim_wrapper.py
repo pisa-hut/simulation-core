@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import time
+from typing import Any
 
 import grpc
 from google.protobuf.struct_pb2 import Struct
@@ -19,6 +20,12 @@ from simcore.utils.sps import ScenarioPack
 from simcore.utils.util import get_cfg
 
 logger = logging.getLogger(__name__)
+
+
+def stringify_params(params: dict[str, Any] | None) -> dict[str, str]:
+    if not params:
+        return {}
+    return {key: str(value) for key, value in params.items()}
 
 
 class SimWrapper:
@@ -85,13 +92,13 @@ class SimWrapper:
         self,
         output_dir: str,
         scenario_pack: ScenarioPack,
-        params: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
     ):
         self._ensure_ready()
         req = sim_server_pb2.SimServerMessages.ResetRequest(
             output_dir=path_pb2.Path(path=str(output_dir)),
             scenario_pack=scenario_pack.to_protobuf(),
-            params=params or {},
+            params=stringify_params(params),
         )
         try:
             resp = self._stub.Reset(req, timeout=self._timeout)

@@ -1,4 +1,3 @@
-import importlib
 import logging
 from pathlib import Path
 from time import time
@@ -6,6 +5,8 @@ from typing import Any
 
 from simcore.av_wrapper import AVWrapper
 from simcore.monitor import Monitor
+from simcore.sampler import create_sampler, load_parameter_space
+from simcore.sampler.loader import resolve_sampler_source
 from simcore.sim_wrapper import SimWrapper
 from simcore.utils.position_parser import PositionParser
 from simcore.utils.sps import ScenarioPack
@@ -85,20 +86,26 @@ class SimulationEngine:
             job_id=self.job_id,
         )
 
-        if self.sps.param_range_file is not None:
-            logger.debug("Parameter range file provided: %s", self.sps.param_range_file)
-            # param_sampler
-            module = importlib.import_module(sampler_spec["module_path"].split(":")[0])
-            sampler_class = getattr(module, sampler_spec["module_path"].split(":")[1])
-            self.param_sampler = sampler_class(
-                param_range_file=self.sps.param_range_file,
-                past_results=None,
+        sampler_source_path, sampler_source_type = resolve_sampler_source(
+            sampler_spec,
+            fallback_param_range_file=self.sps.param_range_file,
+        )
+        if sampler_source_path is not None:
+            logger.debug(
+                "Sampler source provided: %s (%s)", sampler_source_path, sampler_source_type
             )
+            parameter_space = load_parameter_space(sampler_source_path, sampler_source_type)
+            self.param_sampler = create_sampler(
+                sampler_spec=sampler_spec,
+                parameter_space=parameter_space,
+            )
+            self.max_sampler_iterations = sampler_spec.get("max_samples")
         else:
             logger.debug(
                 "No parameter range file provided; seem as testing a concrete scenario; skipping parameter sampler."
             )
             self.param_sampler = None
+            self.max_sampler_iterations = None
 
         # Count of concrete-scenario executions that actually ran to
         # completion during this engine lifetime. The executor reads this
@@ -130,19 +137,20 @@ class SimulationEngine:
 
     def run_logical(self):
         logger.debug("Starting parameter sampling execution.")
-        total = self.param_sampler.total_permutations()
+        total = self.param_sampler.total_samples()
 
         logger.debug(f"Total parameter combinations: {total}")
 
-        for i in range(total):
-            logger.info(f"Sampling iteration {i + 1}/{total}")
+        i = 0
+        while self.max_sampler_iterations is None or i < self.max_sampler_iterations:
+            progress_total = total if total is not None else "unknown"
             params = self.param_sampler.next()
 
             if params is None:
                 logger.debug("Parameter sampling completed.")
                 break
 
-            logger.debug(f"Running scenario with parameters: {params}")
+            logger.info(f"Sampling iteration {i + 1}/{progress_total} : {params}")
 
             try:
                 self.concrete_wrapper(f"iteration_{i + 1}", self.sps, params)
@@ -151,6 +159,7 @@ class SimulationEngine:
                     f"Scenario execution failed at iteration {i + 1} with parameters: {params}"
                 )
                 raise e
+            i += 1
 
         logger.info("Completed all parameter combinations.")
 

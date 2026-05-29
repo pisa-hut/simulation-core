@@ -189,20 +189,112 @@ If the scenario directory contains a parameter range file named:
 <scenario_title>_param.xosc
 ```
 
-the engine creates the configured sampler and runs all sampled concrete scenarios.
+the engine creates the configured sampler and runs all sampled concrete scenarios. OpenSCENARIO
+parameter files are treated as native sample definitions; their `stepWidth` or predefined sets are
+used as-is.
 
-The current built-in sampler is grid search:
+Built-in sampler methods include OpenSCENARIO native sampling, grid search, Latin hypercube
+sampling, and Sobol sampling:
 
 ```json
 {
   "sampler": {
-    "name": "grid",
-    "module_path": "simcore.sampler.grid_search_sampler:GridSearchSampler"
+    "method": "native"
   }
 }
 ```
 
-The sampler parses OpenSCENARIO parameter value distributions and returns one parameter combination per iteration.
+For LHS, Sobol, or domain-based grid search, use a separate YAML/JSON parameter range file that
+describes the parameter domain, not the sampling plan. See `sampler_params_example.yaml`:
+
+```yaml
+parameters:
+  - name: speed
+    type: double
+    range: [10.0, 30.0]
+  - name: offset
+    type: double
+    range: [-2.0, 2.0]
+  - name: behavior
+    type: categorical
+    values: [cutin, brake]
+```
+
+```json
+{
+  "sampler": {
+    "source": {
+      "type": "param_range",
+      "path": "./sampler_params.yaml"
+    },
+    "method": "lhs",
+    "config": {
+      "n_samples": 50,
+      "seed": 42
+    }
+  }
+}
+```
+
+```json
+{
+  "sampler": {
+    "source": {
+      "type": "param_range",
+      "path": "./sampler_params.yaml"
+    },
+    "method": "sobol",
+    "config": {
+      "n_samples": 50,
+      "skip": 1
+    }
+  }
+}
+```
+
+Domain-based grid search discretizes continuous ranges according to sampler config:
+
+```json
+{
+  "sampler": {
+    "source": {
+      "type": "param_range",
+      "path": "./sampler_params.yaml"
+    },
+    "method": "grid",
+    "config": {
+      "defaults": {
+        "n": 5
+      },
+      "parameters": {
+        "offset": {
+          "step": 0.5
+        }
+      }
+    }
+  }
+}
+```
+
+Built-in samplers are selected by `method`; the previous `name` field is still accepted for
+compatibility. External samplers can still be loaded with
+`"module_path": "package.module:SamplerClass"` if they inherit from `simcore.sampler.Sampler`.
+
+Samplers return one parameter dictionary per iteration. Finite samplers can expose
+`total_samples()` for progress reporting; adaptive samplers may return `None` when the total is
+not known ahead of time.
+
+Sampler config can be provided inline with `sampler.config` or through a YAML/JSON file via
+`sampler.config_path`; inline config wins when both are present. LHS and Sobol default to at most
+16 samples when `n_samples` is omitted.
+
+To inspect sampler output without running a simulator:
+
+```bash
+python sampler_tester.py path/to/scenario_param.xosc --method native
+python sampler_tester.py path/to/sampler_params.yaml --source-type param_range --method lhs --n-samples 8 --seed 42
+python sampler_tester.py path/to/sampler_params.yaml --source-type param_range --method sobol --n-samples 8
+```
 
 ### `monitor`
 

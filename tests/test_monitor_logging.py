@@ -392,7 +392,7 @@ logging:
         sim=FakeEndpoint(),
         job_id="test",
     )
-    monitor.current_summary_counts = {"finished": 1, "fail": 1, "skipped": 1}
+    monitor.current_summary_counts = {"finished": 1, "fail": 1, "skipped": 1, "abort": 1}
     monitor.current_sim_time_ms = 1000.0
     monitor.current_wall_time_ms = 500.0
 
@@ -405,8 +405,11 @@ logging:
     summary_dir = output_base / "iteration_3" / "monitor"
     summary_dir.mkdir(parents=True)
     (summary_dir / "result.csv").write_text("run.status,run.stop_reason\nskipped,dont_retry\n")
+    summary_dir = output_base / "iteration_4" / "monitor"
+    summary_dir.mkdir(parents=True)
+    (summary_dir / "result.csv").write_text("run.status,run.stop_reason\nabort,retry limit\n")
 
-    monitor.close(ExecResult(1, RetryHint.OK, "completed"))
+    monitor.close(ExecResult(RetryHint.OK, "completed", 1, 1, 1))
 
     rows = read_csv(output_base / "summary.csv")
     assert rows == [
@@ -416,9 +419,11 @@ logging:
             "speedup": "2.0",
             "current_finished": "1",
             "current_failed": "1",
+            "current_abort": "1",
             "current_skipped": "1",
             "cumulative_finished": "1",
             "cumulative_failed": "1",
+            "cumulative_abort": "1",
             "cumulative_skipped": "1",
             "reason": "completed",
         }

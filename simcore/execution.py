@@ -14,9 +14,11 @@ class RetryHint(Enum):
 
 @dataclass(frozen=True)
 class ExecResult:
-    completed_concrete_runs: int
     hint: RetryHint
     reason: str
+    finished_concrete_runs: int
+    aborted_concrete_runs: int
+    skipped_concrete_runs: int
 
 
 @dataclass(frozen=True)

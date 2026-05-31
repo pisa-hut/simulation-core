@@ -136,10 +136,13 @@ class SimulationEngine:
         """
         result: ExecResult
         if self._startup_error is not None:
+            logical_counts = self._logical_terminal_counts()
             result = ExecResult(
-                completed_concrete_runs=0,
                 hint=self._startup_error.hint,
                 reason=str(self._startup_error),
+                finished_concrete_runs=logical_counts["finished"],
+                aborted_concrete_runs=logical_counts["abort"],
+                skipped_concrete_runs=logical_counts["skipped"],
             )
             self.close(result)
             return result
@@ -154,23 +157,23 @@ class SimulationEngine:
         except ScenarioExecutionError as e:
             logger.error(f"Error during scenario execution: {e}")
             result = ExecResult(
-                completed_concrete_runs=self._completed_concrete_runs(),
                 hint=e.hint,
                 reason=str(e),
+                **self._exec_result_terminal_counts(),
             )
         except Exception as e:
             logger.error(f"Error during scenario execution: {e}")
             result = ExecResult(
-                completed_concrete_runs=self._completed_concrete_runs(),
                 hint=RetryHint.RETRY,
                 reason=f"{type(e).__name__}: {e}",
+                **self._exec_result_terminal_counts(),
             )
         else:
             logger.info("Scenario execution completed successfully.")
             result = ExecResult(
-                completed_concrete_runs=self._completed_concrete_runs(),
                 hint=RetryHint.OK,
                 reason="completed",
+                **self._exec_result_terminal_counts(),
             )
         finally:
             self.close(result if "result" in locals() else None)
@@ -222,10 +225,14 @@ class SimulationEngine:
         sps: ScenarioPack,
         params: dict[str, Any] | None = None,
     ) -> None:
-        if self.monitor.has_terminal_summary(output_related) and not self.overwrite:
+        last_status = self.monitor.last_summary_status(output_related)
+        if last_status in {"skipped", "abort"}:
             logger.info(
-                f"Terminal summary already exists for {output_related}. Skipping execution."
+                f"Concrete {output_related} already has terminal status '{last_status}'. Skipping execution."
             )
+            return
+        if last_status == "finished" and not self.overwrite:
+            logger.info(f"Finished summary already exists for {output_related}. Skipping execution.")
             return
         if (
             not self.overwrite
@@ -234,11 +241,10 @@ class SimulationEngine:
         ):
             reason = (
                 f"retry: exceeded max_concrete_retries={self.max_concrete_retries}; "
-                "skipping concrete"
+                "aborting concrete"
             )
             logger.warning("%s for %s", reason, output_related)
-            self._finalize_skipped_concrete(output_related, params, reason)
-            self._record_skipped_concrete(reason)
+            self._finalize_aborted_concrete(output_related, params, reason)
             return
 
         try:
@@ -416,7 +422,31 @@ class SimulationEngine:
         except Exception:
             logger.exception("monitor.finalize() failed while recording skipped concrete")
 
-    def _completed_concrete_runs(self) -> int:
+    def _finalize_aborted_concrete(
+        self,
+        output_related: str,
+        params: dict[str, Any] | None,
+        reason: str,
+    ) -> None:
+        try:
+            self.monitor.reset(
+                output_related,
+                params=params,
+                overwrite_summary=self.overwrite,
+            )
+            self.monitor.finalize(status="abort", reason=reason)
+        except Exception:
+            logger.exception("monitor.finalize() failed while recording aborted concrete")
+
+    def _logical_terminal_counts(self) -> dict[str, int]:
         if self.monitor is None:
-            return 0
-        return self.monitor.current_summary_counts["finished"]
+            return {"finished": 0, "abort": 0, "skipped": 0}
+        return self.monitor.logical_terminal_counts()
+
+    def _exec_result_terminal_counts(self) -> dict[str, int]:
+        counts = self._logical_terminal_counts()
+        return {
+            "finished_concrete_runs": counts["finished"],
+            "aborted_concrete_runs": counts["abort"],
+            "skipped_concrete_runs": counts["skipped"],
+        }

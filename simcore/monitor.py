@@ -60,7 +60,7 @@ class Monitor:
         self.params: dict[str, Any] = {}
         self.wall_start_time_s: float | None = None
         self.overwrite_summary = False
-        self.current_summary_counts = {"finished": 0, "fail": 0, "skipped": 0}
+        self.current_summary_counts = {"finished": 0, "fail": 0, "skipped": 0, "abort": 0}
         self.current_sim_time_ms = 0.0
         self.current_wall_time_ms = 0.0
 
@@ -284,6 +284,14 @@ class Monitor:
         if result is not None:
             self._write_exec_summary(result)
 
+    def logical_terminal_counts(self) -> dict[str, int]:
+        counts = self._cumulative_concrete_summary_counts()
+        return {
+            "finished": counts["finished"],
+            "abort": counts["abort"],
+            "skipped": counts["skipped"],
+        }
+
     def has_finished_summary(self, output_related: str) -> bool:
         rows = self.summary_rows(output_related)
         if not rows:
@@ -291,12 +299,15 @@ class Monitor:
 
         return rows[-1].get("run.status") == "finished"
 
-    def has_terminal_summary(self, output_related: str) -> bool:
+    def last_summary_status(self, output_related: str) -> str | None:
         rows = self.summary_rows(output_related)
         if not rows:
-            return False
+            return None
 
-        return rows[-1].get("run.status") in {"finished", "skipped"}
+        return rows[-1].get("run.status")
+
+    def has_terminal_summary(self, output_related: str) -> bool:
+        return self.last_summary_status(output_related) in {"finished", "skipped", "abort"}
 
     def count_retryable_failures(self, output_related: str) -> int:
         return sum(
@@ -428,9 +439,11 @@ class Monitor:
             "speedup",
             "current_finished",
             "current_failed",
+            "current_abort",
             "current_skipped",
             "cumulative_finished",
             "cumulative_failed",
+            "cumulative_abort",
             "cumulative_skipped",
             "reason",
         )
@@ -442,9 +455,11 @@ class Monitor:
                 "speedup": self._current_speedup(),
                 "current_finished": self.current_summary_counts["finished"],
                 "current_failed": self.current_summary_counts["fail"],
+                "current_abort": self.current_summary_counts["abort"],
                 "current_skipped": self.current_summary_counts["skipped"],
                 "cumulative_finished": cumulative["finished"],
                 "cumulative_failed": cumulative["fail"],
+                "cumulative_abort": cumulative["abort"],
                 "cumulative_skipped": cumulative["skipped"],
                 "reason": result.reason,
             }
@@ -460,7 +475,7 @@ class Monitor:
             logger.exception("Failed to write execution summary")
 
     def _cumulative_concrete_summary_counts(self) -> dict[str, int]:
-        counts = {"finished": 0, "fail": 0, "skipped": 0}
+        counts = {"finished": 0, "fail": 0, "skipped": 0, "abort": 0}
         output_base = Path(self.log_file).parent
 
         for summary_path in output_base.glob(f"*/{self.logging_output_dir}/*.csv"):

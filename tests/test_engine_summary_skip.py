@@ -14,13 +14,16 @@ class FakeMonitor:
         self.retryable_failures = 0
         self.finalize_calls = []
         self.close_result = None
-        self.current_summary_counts = {"finished": 0, "fail": 0, "skipped": 0}
+        self.current_summary_counts = {"finished": 0, "fail": 0, "skipped": 0, "abort": 0}
 
     def has_finished_summary(self, output_related: str) -> bool:
         return self.status == "finished"
 
     def has_terminal_summary(self, output_related: str) -> bool:
-        return self.status in {"finished", "skipped"}
+        return self.status in {"finished", "skipped", "abort"}
+
+    def last_summary_status(self, output_related: str) -> str | None:
+        return self.status
 
     def count_retryable_failures(self, output_related: str) -> int:
         return self.retryable_failures
@@ -35,6 +38,13 @@ class FakeMonitor:
 
     def close(self, result=None):
         self.close_result = result
+
+    def logical_terminal_counts(self) -> dict[str, int]:
+        return {
+            "finished": self.current_summary_counts["finished"],
+            "abort": self.current_summary_counts["abort"],
+            "skipped": self.current_summary_counts["skipped"],
+        }
 
 
 def make_engine(
@@ -86,6 +96,36 @@ def test_concrete_wrapper_overwrite_reruns_finished_summary(tmp_path: Path) -> N
 
 def test_concrete_wrapper_skips_previous_skipped_summary(tmp_path: Path) -> None:
     engine = make_engine(tmp_path, status="skipped")
+    ran = False
+
+    def run_concrete(output_related, sps, params=None):
+        nonlocal ran
+        ran = True
+
+    engine.run_concrete = run_concrete
+
+    engine.concrete_wrapper("case_1", sps=None)
+
+    assert ran is False
+
+
+def test_concrete_wrapper_skips_previous_aborted_summary(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, status="abort")
+    ran = False
+
+    def run_concrete(output_related, sps, params=None):
+        nonlocal ran
+        ran = True
+
+    engine.run_concrete = run_concrete
+
+    engine.concrete_wrapper("case_1", sps=None)
+
+    assert ran is False
+
+
+def test_concrete_wrapper_does_not_overwrite_previous_aborted_summary(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, status="abort", overwrite=True)
     ran = False
 
     def run_concrete(output_related, sps, params=None):
@@ -152,7 +192,7 @@ def test_concrete_wrapper_records_failed_precondition_skip(tmp_path: Path) -> No
     ]
 
 
-def test_concrete_wrapper_skips_after_too_many_retryable_failures(tmp_path: Path) -> None:
+def test_concrete_wrapper_aborts_after_too_many_retryable_failures(tmp_path: Path) -> None:
     engine = make_engine(tmp_path, finished=False)
     engine.monitor.retryable_failures = 3
     ran = False
@@ -168,8 +208,8 @@ def test_concrete_wrapper_skips_after_too_many_retryable_failures(tmp_path: Path
     assert ran is False
     assert engine.monitor.finalize_calls == [
         (
-            "skipped",
-            "retry: exceeded max_concrete_retries=3; skipping concrete",
+            "abort",
+            "retry: exceeded max_concrete_retries=3; aborting concrete",
         ),
     ]
 
@@ -192,9 +232,11 @@ def test_exec_returns_retry_hint_for_transient_error(tmp_path: Path) -> None:
 
     result = engine.exec()
 
-    assert result.completed_concrete_runs == 0
     assert result.hint == RetryHint.RETRY
     assert result.reason == "av step failed: UNAVAILABLE - timed out"
+    assert result.finished_concrete_runs == 0
+    assert result.aborted_concrete_runs == 0
+    assert result.skipped_concrete_runs == 0
 
 
 def test_exec_delegates_summary_to_monitor_close(tmp_path: Path) -> None:
@@ -212,7 +254,9 @@ def test_exec_delegates_summary_to_monitor_close(tmp_path: Path) -> None:
     result = engine.exec()
 
     assert result.hint == RetryHint.OK
-    assert result.completed_concrete_runs == 1
+    assert result.finished_concrete_runs == 1
+    assert result.aborted_concrete_runs == 0
+    assert result.skipped_concrete_runs == 0
     assert engine.monitor.close_result == result
 
 
@@ -230,7 +274,6 @@ def test_exec_returns_ok_when_only_concrete_was_skipped(tmp_path: Path) -> None:
 
     result = engine.exec()
 
-    assert result.completed_concrete_runs == 0
     assert result.hint == RetryHint.OK
     assert result.reason == "completed"
 

@@ -79,7 +79,7 @@ class AVWrapper:
         try:
             self._stub.Init(request, timeout=self._timeout)
         except grpc.RpcError as e:
-            raise classify_grpc_error(e, service="av", operation="init") from e
+            raise classify_grpc_error(e) from e
         logger.info("AV init completed")
 
     def reset(
@@ -99,7 +99,7 @@ class AVWrapper:
             resp = self._stub.Reset(req, timeout=self._timeout)
             return resp.ctrl_cmd
         except grpc.RpcError as e:
-            raise classify_grpc_error(e, service="av", operation="reset") from e
+            raise classify_grpc_error(e) from e
 
     def step(self, obs, time_stamp_ns: int):
         self._ensure_ready()
@@ -112,7 +112,7 @@ class AVWrapper:
             # StepResponse { repeated ObjectState objects }
             return resp.ctrl_cmd
         except grpc.RpcError as e:
-            raise classify_grpc_error(e, service="av", operation="step") from e
+            raise classify_grpc_error(e) from e
 
     def stop(self):
         """

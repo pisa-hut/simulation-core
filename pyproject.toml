@@ -4,7 +4,11 @@ version = "0.3.0"
 description = "PISA simulation core - drives the simulation loop via gRPC"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = ["pisa-api>=0.3.0", "pyyaml>=6.0.3"]
+dependencies = [
+    "pisa-api>=0.3.0",
+    "pyyaml>=6.0.3",
+    "rich>=15.0.0",
+]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.6"]

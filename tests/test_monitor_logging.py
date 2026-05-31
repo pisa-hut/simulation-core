@@ -443,7 +443,7 @@ logging:
     monitor.reset("case_1")
 
     assert monitor.should_stop() is True
-    assert monitor.stop_reason == "AV requested scenario stop via should_quit(): route complete"
+    assert monitor.stop_reason == "AV requested to stop: route complete"
 
 
 def test_monitor_stop_reason_includes_sim_should_quit_message(tmp_path: Path) -> None:
@@ -467,7 +467,4 @@ logging:
     monitor.reset("case_1")
 
     assert monitor.should_stop() is True
-    assert (
-        monitor.stop_reason
-        == "Simulator requested scenario stop via should_quit(): simulation complete"
-    )
+    assert monitor.stop_reason == "Simulator requested to stop: simulation complete"

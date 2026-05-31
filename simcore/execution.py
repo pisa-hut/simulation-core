@@ -35,15 +35,10 @@ class ScenarioExecutionError(RuntimeError):
         self.summary_recorded = False
 
 
-def classify_grpc_error(
-    error: grpc.RpcError,
-    *,
-    service: str,
-    operation: str,
-) -> ScenarioExecutionError:
+def classify_grpc_error(error: grpc.RpcError) -> ScenarioExecutionError:
     code = error.code()
     details = error.details()
-    reason = f"{service} {operation} failed: {code.name} - {details}"
+    reason = f"{code.name} - {details}"
 
     if code == grpc.StatusCode.INVALID_ARGUMENT:
         return ScenarioExecutionError(

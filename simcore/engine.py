@@ -38,7 +38,7 @@ class SimulationEngine:
         self.log_level = runtime_spec.get("log_level", "info").upper()
         logger.setLevel(getattr(logging, self.log_level, logging.INFO))
         self.overwrite = bool(runtime_spec.get("overwrite", False))
-        self.max_concrete_retries = int(runtime_spec.get("max_concrete_retries", 1))
+        self.max_concrete_retries = int(runtime_spec.get("max_concrete_retries", 3))
         self._speedup_ratio = runtime_spec.get("speedup_ratio", 0)
         self._dt_s = runtime_spec.get("dt", None)
         if self._dt_s is None or self._dt_s <= 0:
@@ -232,7 +232,9 @@ class SimulationEngine:
             )
             return
         if last_status == "finished" and not self.overwrite:
-            logger.info(f"Finished summary already exists for {output_related}. Skipping execution.")
+            logger.info(
+                f"Finished summary already exists for {output_related}. Skipping execution."
+            )
             return
         if (
             not self.overwrite

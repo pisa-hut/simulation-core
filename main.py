@@ -35,10 +35,12 @@ def main():
     result = engine.exec()
 
     logger.info(
-        "Engine finished: %d concrete run(s), hint=%s, reason=%s",
-        result.completed_concrete_runs,
+        "Engine finished: hint=%s, reason=%s, finished_concrete_runs=%d, aborted_concrete_runs=%d, skipped_concrete_runs=%d",
         result.hint.value,
         result.reason,
+        result.finished_concrete_runs,
+        result.aborted_concrete_runs,
+        result.skipped_concrete_runs,
     )
     # OK = clean completion. Anything else exits non-zero so callers
     # (CI, ad-hoc shell loops) can tell a failed run from a successful

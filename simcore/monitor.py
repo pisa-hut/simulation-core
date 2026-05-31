@@ -198,12 +198,20 @@ class Monitor:
                     self.stop_reason,
                 )
                 return True
-        if self.av.should_quit():
-            self.stop_reason = "AV requested scenario stop via should_quit()"
+        av_should_quit = self.av.should_quit()
+        if av_should_quit:
+            self.stop_reason = self._should_quit_reason(
+                "AV",
+                getattr(av_should_quit, "message", ""),
+            )
             logger.info(self.stop_reason)
             return True
-        if self.sim.should_quit():
-            self.stop_reason = "Simulator requested scenario stop via should_quit()"
+        sim_should_quit = self.sim.should_quit()
+        if sim_should_quit:
+            self.stop_reason = self._should_quit_reason(
+                "Simulator",
+                getattr(sim_should_quit, "message", ""),
+            )
             logger.info(self.stop_reason)
             return True
         return False
@@ -392,6 +400,13 @@ class Monitor:
         if self.log_manager:
             self.log_manager.close()
             self.log_manager = None
+
+    @staticmethod
+    def _should_quit_reason(component: str, message: str) -> str:
+        reason = f"{component} requested to stop"
+        if message:
+            return f"{reason}: {message}"
+        return reason
 
     def _wall_time_ms(self) -> float:
         if self.wall_start_time_s is None:

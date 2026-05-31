@@ -13,7 +13,7 @@ from pisa_api import (
     path_pb2,
 )
 
-from simcore.execution import classify_grpc_error
+from simcore.execution import ShouldQuitResult, classify_grpc_error
 from simcore.utils.sps import ScenarioPack
 from simcore.utils.util import get_cfg
 
@@ -128,18 +128,18 @@ class AVWrapper:
             self._connected = False
             self._close()
 
-    def should_quit(self) -> bool:
+    def should_quit(self) -> ShouldQuitResult:
         """
         rpc ShouldQuit(Empty) returns (ShouldQuitResponse)
         """
         if self._stub is None or not self._connected:
-            return True
+            return ShouldQuitResult(True, "AV wrapper is not connected")
         try:
             resp = self._stub.ShouldQuit(empty_pb2.Empty(), timeout=min(self._timeout, 2.0))
-            return bool(resp.should_quit)
+            return ShouldQuitResult(bool(resp.should_quit), getattr(resp, "msg", ""))
         except grpc.RpcError:
             # server 抖一下不要直接判 quit
-            return False
+            return ShouldQuitResult(False)
 
     # ---------------------------
     # Internal

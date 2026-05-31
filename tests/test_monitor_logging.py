@@ -3,12 +3,21 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from simcore.execution import ShouldQuitResult
 from simcore.monitor import Monitor
 
 
 class FakeEndpoint:
     def should_quit(self) -> bool:
         return False
+
+
+class FakeShouldQuitEndpoint:
+    def __init__(self, *, should_quit: bool, message: str = "") -> None:
+        self.result = ShouldQuitResult(should_quit, message)
+
+    def should_quit(self) -> ShouldQuitResult:
+        return self.result
 
 
 def write_config(tmp_path: Path, content: str) -> Path:
@@ -411,3 +420,54 @@ condition:
     assert monitor.should_stop() is True
     assert monitor.stop_reason.startswith("Stop condition 'timeout_guard' triggered:")
     assert "Timeout detected" in monitor.stop_reason
+
+
+def test_monitor_stop_reason_includes_av_should_quit_message(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeShouldQuitEndpoint(should_quit=True, message="route complete"),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+
+    assert monitor.should_stop() is True
+    assert monitor.stop_reason == "AV requested scenario stop via should_quit(): route complete"
+
+
+def test_monitor_stop_reason_includes_sim_should_quit_message(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeShouldQuitEndpoint(should_quit=True, message="simulation complete"),
+    )
+
+    monitor.reset("case_1")
+
+    assert monitor.should_stop() is True
+    assert (
+        monitor.stop_reason
+        == "Simulator requested scenario stop via should_quit(): simulation complete"
+    )

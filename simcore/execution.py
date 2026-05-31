@@ -19,6 +19,15 @@ class ExecResult:
     reason: str
 
 
+@dataclass(frozen=True)
+class ShouldQuitResult:
+    should_quit: bool
+    message: str = ""
+
+    def __bool__(self) -> bool:
+        return self.should_quit
+
+
 class ScenarioExecutionError(RuntimeError):
     def __init__(
         self,

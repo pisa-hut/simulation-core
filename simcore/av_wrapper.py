@@ -13,6 +13,7 @@ from pisa_api import (
     path_pb2,
 )
 
+from simcore.execution import classify_grpc_error
 from simcore.utils.sps import ScenarioPack
 from simcore.utils.util import get_cfg
 
@@ -75,10 +76,11 @@ class AVWrapper:
             map_name=self._map_name,
             dt=self._dt_s,
         )
-        response = self._stub.Init(request, timeout=self._timeout)
-        logger.info(f"Init response: {response.msg}")
-        if not response.success:
-            raise RuntimeError(f"Server Init returned success=false: {response.msg}")
+        try:
+            self._stub.Init(request, timeout=self._timeout)
+        except grpc.RpcError as e:
+            raise classify_grpc_error(e, service="av", operation="init") from e
+        logger.info("AV init completed")
 
     def reset(
         self,
@@ -97,9 +99,7 @@ class AVWrapper:
             resp = self._stub.Reset(req, timeout=self._timeout)
             return resp.ctrl_cmd
         except grpc.RpcError as e:
-            if e.code() == grpc.StatusCode.UNAVAILABLE:
-                raise RuntimeError(f"AV timed out during reset: {e.details()}") from e
-            raise RuntimeError(f"AVWrapper Reset failed: {e.code().name} - {e.details()}") from e
+            raise classify_grpc_error(e, service="av", operation="reset") from e
 
     def step(self, obs, time_stamp_ns: int):
         self._ensure_ready()
@@ -112,7 +112,7 @@ class AVWrapper:
             # StepResponse { repeated ObjectState objects }
             return resp.ctrl_cmd
         except grpc.RpcError as e:
-            raise RuntimeError(f"AVWrapper Step failed: {e.code().name} - {e.details()}") from e
+            raise classify_grpc_error(e, service="av", operation="step") from e
 
     def stop(self):
         """

@@ -261,16 +261,34 @@ class Monitor:
             self._close_log_manager()
 
     def has_finished_summary(self, output_related: str) -> bool:
-        summary_path = self.summary_path(output_related)
-        if summary_path is None or not summary_path.exists():
-            return False
-
-        with summary_path.open(newline="") as file:
-            rows = list(csv.DictReader(file))
+        rows = self.summary_rows(output_related)
         if not rows:
             return False
 
         return rows[-1].get("run.status") == "finished"
+
+    def has_terminal_summary(self, output_related: str) -> bool:
+        rows = self.summary_rows(output_related)
+        if not rows:
+            return False
+
+        return rows[-1].get("run.status") in {"finished", "skipped"}
+
+    def count_retryable_failures(self, output_related: str) -> int:
+        return sum(
+            1
+            for row in self.summary_rows(output_related)
+            if row.get("run.status") == "fail"
+            and row.get("run.stop_reason", "").startswith("retry:")
+        )
+
+    def summary_rows(self, output_related: str) -> list[dict[str, str]]:
+        summary_path = self.summary_path(output_related)
+        if summary_path is None or not summary_path.exists():
+            return []
+
+        with summary_path.open(newline="") as file:
+            return list(csv.DictReader(file))
 
     def summary_path(self, output_related: str) -> Path | None:
         if not self.summary_logging_enabled:

@@ -1,8 +1,10 @@
 import argparse
 import json
 import logging
+import sys
 
 from simcore.engine import SimulationEngine
+from simcore.execution import RetryHint
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -30,7 +32,18 @@ def main():
         runner_spec = json.load(f)
 
     engine = SimulationEngine(runner_spec)
-    engine.exec()
+    result = engine.exec()
+
+    logger.info(
+        "Engine finished: %d concrete run(s), hint=%s, reason=%s",
+        result.completed_concrete_runs,
+        result.hint.value,
+        result.reason,
+    )
+    # OK = clean completion. Anything else exits non-zero so callers
+    # (CI, ad-hoc shell loops) can tell a failed run from a successful
+    # one without parsing the log.
+    sys.exit(0 if result.hint is RetryHint.OK else 1)
 
 
 if __name__ == "__main__":

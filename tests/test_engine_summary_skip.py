@@ -1,4 +1,3 @@
-import csv
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +13,8 @@ class FakeMonitor:
         self.status = status
         self.retryable_failures = 0
         self.finalize_calls = []
+        self.close_result = None
+        self.current_summary_counts = {"finished": 0, "fail": 0, "skipped": 0}
 
     def has_finished_summary(self, output_related: str) -> bool:
         return self.status == "finished"
@@ -29,11 +30,11 @@ class FakeMonitor:
 
     def finalize(self, status: str, reason: str = ""):
         self.finalize_calls.append((status, reason))
+        if status in self.current_summary_counts:
+            self.current_summary_counts[status] += 1
 
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="") as file:
-        return list(csv.DictReader(file))
+    def close(self, result=None):
+        self.close_result = result
 
 
 def make_engine(
@@ -48,9 +49,6 @@ def make_engine(
     engine.max_concrete_retries = 3
     engine.output_base = tmp_path / "outputs"
     engine.job_id = "test"
-    engine.completed_concrete_runs = 0
-    engine.failed_concrete_runs = 0
-    engine.skipped_concrete_runs = 0
     engine._last_skip_reason = ""
     return engine
 
@@ -181,7 +179,7 @@ def test_exec_returns_retry_hint_for_transient_error(tmp_path: Path) -> None:
     engine.param_sampler = None
     engine.sps = None
     engine._startup_error = None
-    engine.close = lambda: None
+    engine.close = lambda result=None: None
 
     def concrete_wrapper(output_related, sps):
         raise ScenarioExecutionError(
@@ -199,46 +197,23 @@ def test_exec_returns_retry_hint_for_transient_error(tmp_path: Path) -> None:
     assert result.reason == "av step failed: UNAVAILABLE - timed out"
 
 
-def test_exec_writes_current_and_cumulative_summary(tmp_path: Path) -> None:
+def test_exec_delegates_summary_to_monitor_close(tmp_path: Path) -> None:
     engine = make_engine(tmp_path, finished=False)
-    engine.output_base.mkdir(parents=True)
     engine.param_sampler = None
     engine.sps = None
     engine._startup_error = None
-    engine.close = lambda: None
-    engine.completed_concrete_runs = 1
-    engine.failed_concrete_runs = 1
-    engine.skipped_concrete_runs = 1
-
-    summary_dir = engine.output_base / "iteration_1" / "monitor"
-    summary_dir.mkdir(parents=True)
-    (summary_dir / "summary.csv").write_text("run.status,run.stop_reason\nfinished,completed\n")
-    summary_dir = engine.output_base / "iteration_2" / "monitor"
-    summary_dir.mkdir(parents=True)
-    (summary_dir / "summary.csv").write_text("run.status,run.stop_reason\nfail,retry: timeout\n")
-    summary_dir = engine.output_base / "iteration_3" / "monitor"
-    summary_dir.mkdir(parents=True)
-    (summary_dir / "summary.csv").write_text("run.status,run.stop_reason\nskipped,dont_retry\n")
+    engine.sim = None
+    engine.av = None
+    engine.position_parser = SimpleNamespace(close=lambda: None)
+    engine.monitor.current_summary_counts["finished"] = 1
 
     engine.concrete_wrapper = lambda output_related, sps: None
 
     result = engine.exec()
 
     assert result.hint == RetryHint.OK
-    rows = read_csv(engine.output_base / "summary.csv")
-    assert rows == [
-        {
-            "job_id": "test",
-            "hint": "ok",
-            "reason": "completed",
-            "current_finished": "1",
-            "current_failed": "1",
-            "current_skipped": "1",
-            "cumulative_finished": "1",
-            "cumulative_failed": "1",
-            "cumulative_skipped": "1",
-        }
-    ]
+    assert result.completed_concrete_runs == 1
+    assert engine.monitor.close_result == result
 
 
 def test_exec_returns_ok_when_only_concrete_was_skipped(tmp_path: Path) -> None:
@@ -246,7 +221,7 @@ def test_exec_returns_ok_when_only_concrete_was_skipped(tmp_path: Path) -> None:
     engine.param_sampler = None
     engine.sps = None
     engine._startup_error = None
-    engine.close = lambda: None
+    engine.close = lambda result=None: None
 
     def concrete_wrapper(output_related, sps):
         engine._record_skipped_concrete("dont_retry: scenario impossible")

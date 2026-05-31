@@ -1,7 +1,7 @@
-import csv
+import json
 import logging
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Any
 
 from rich.logging import RichHandler
@@ -49,14 +49,11 @@ class SimulationEngine:
         self.output_base.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output base directory set to: {self.output_base}")
         self._startup_error: ScenarioExecutionError | None = None
-        self.av: AVWrapper
-        self.sim: SimWrapper
-        self.monitor: Monitor
+        self.av: AVWrapper | None = None
+        self.sim: SimWrapper | None = None
+        self.monitor: Monitor | None = None
         self.param_sampler = None
         self.max_sampler_iterations = None
-        self.completed_concrete_runs = 0
-        self.failed_concrete_runs = 0
-        self.skipped_concrete_runs = 0
         self._last_skip_reason = ""
 
         self.position_parser = PositionParser.from_specs(scenario_spec, map_spec)
@@ -137,17 +134,15 @@ class SimulationEngine:
         If a parameter sampler is provided, it will iterate through all parameter combinations;
         otherwise, it will run a single concrete scenario.
         """
+        result: ExecResult
         if self._startup_error is not None:
-            try:
-                result = ExecResult(
-                    completed_concrete_runs=self.completed_concrete_runs,
-                    hint=self._startup_error.hint,
-                    reason=str(self._startup_error),
-                )
-                self._write_exec_summary(result)
-                return result
-            finally:
-                self.close()
+            result = ExecResult(
+                completed_concrete_runs=0,
+                hint=self._startup_error.hint,
+                reason=str(self._startup_error),
+            )
+            self.close(result)
+            return result
 
         try:
             if self.param_sampler is not None:
@@ -159,32 +154,27 @@ class SimulationEngine:
         except ScenarioExecutionError as e:
             logger.error(f"Error during scenario execution: {e}")
             result = ExecResult(
-                completed_concrete_runs=self.completed_concrete_runs,
+                completed_concrete_runs=self._completed_concrete_runs(),
                 hint=e.hint,
                 reason=str(e),
             )
-            self._write_exec_summary(result)
-            return result
         except Exception as e:
             logger.error(f"Error during scenario execution: {e}")
             result = ExecResult(
-                completed_concrete_runs=self.completed_concrete_runs,
+                completed_concrete_runs=self._completed_concrete_runs(),
                 hint=RetryHint.RETRY,
                 reason=f"{type(e).__name__}: {e}",
             )
-            self._write_exec_summary(result)
-            return result
         else:
             logger.info("Scenario execution completed successfully.")
             result = ExecResult(
-                completed_concrete_runs=self.completed_concrete_runs,
+                completed_concrete_runs=self._completed_concrete_runs(),
                 hint=RetryHint.OK,
                 reason="completed",
             )
-            self._write_exec_summary(result)
-            return result
         finally:
-            self.close()
+            self.close(result if "result" in locals() else None)
+        return result
 
     def run_logical(self):
         logger.debug("Starting parameter sampling execution.")
@@ -204,7 +194,8 @@ class SimulationEngine:
             logger.info(
                 f"====================== Sampling iteration {i + 1}/{progress_total} ======================"
             )
-            logger.info(f"Sampled parameters: {params}")
+
+            logger.info(f"Sampled parameters: {json.dumps(params)}")
 
             try:
                 self.concrete_wrapper(f"iteration_{i + 1}", self.sps, params)
@@ -273,9 +264,6 @@ class SimulationEngine:
             logger.error(f"Error in concrete scenario execution for {output_related}: {e}")
             raise
         else:
-            # Count the execution as soon as run_concrete returned cleanly.
-            # Dry runs still count because the scenario did run.
-            self.completed_concrete_runs += 1
             logger.info(f"Scenario {output_related} completed successfully.")
 
     def run_concrete(
@@ -310,7 +298,6 @@ class SimulationEngine:
             sim_time_ns = 0  # Simulation time in nanoseconds
 
             wall_start = time.monotonic()
-            sim_time_need = 0
             while True:
                 if self.monitor.should_stop():
                     stop_reason = self.monitor.stop_reason or "monitor_stop"
@@ -329,7 +316,7 @@ class SimulationEngine:
 
                 if self._speedup_ratio > 0:
                     print(
-                        f"time use = {time_use_s:.2f} s, sim_time = {sim_time_ns / 1e9:.2f} s",
+                        f"sim_time = {sim_time_ns / 1e9:.2f} s, time use = {time_use_s:.2f} s",
                         end="\r",
                     )
 
@@ -346,13 +333,13 @@ class SimulationEngine:
                 status="finished",
                 reason=stop_reason or "completed",
             )
+            wall_elapsed_s = time.monotonic() - wall_start
         except KeyboardInterrupt:
             try:
                 self.monitor.finalize(
                     status="fail",
                     reason="KeyboardInterrupt: interrupted by user",
                 )
-                self._record_failed_concrete()
             except Exception:
                 logger.exception("monitor.finalize() failed after keyboard interrupt")
             raise
@@ -370,8 +357,6 @@ class SimulationEngine:
                     reason=reason,
                 )
                 exc.summary_recorded = True
-                if status == "fail":
-                    self._record_failed_concrete()
             except Exception:
                 logger.exception("monitor.finalize() failed after scenario error")
             raise
@@ -381,16 +366,22 @@ class SimulationEngine:
                     status="fail",
                     reason=f"{type(exc).__name__}: {exc}",
                 )
-                self._record_failed_concrete()
             except Exception:
                 logger.exception("monitor.finalize() failed after scenario error")
             raise
 
+        completed_sim_time_s = self.monitor.final_sim_time_ns / 1e9
+        achieved_speedup = completed_sim_time_s / wall_elapsed_s if wall_elapsed_s > 0 else 0.0
         logger.info(
-            f"Completed {sim_time_ns / 1e9:.2f} seconds scenario, using {sim_time_need:.2f} sec."
+            f"Completed {completed_sim_time_s:.2f} seconds scenario, using {wall_elapsed_s:.2f} sec, speedup: {achieved_speedup:.2f}x"
         )
 
-    def close(self):
+    def close(self, result: ExecResult | None = None):
+        if self.monitor is not None:
+            try:
+                self.monitor.close(result)
+            except Exception:
+                logger.exception("monitor.close() failed")
         if self.av is not None:
             try:
                 self.av.stop()
@@ -407,11 +398,7 @@ class SimulationEngine:
             logger.exception("position_parser.close() failed")
 
     def _record_skipped_concrete(self, reason: str) -> None:
-        self.skipped_concrete_runs += 1
         self._last_skip_reason = reason
-
-    def _record_failed_concrete(self) -> None:
-        self.failed_concrete_runs += 1
 
     def _finalize_skipped_concrete(
         self,
@@ -429,59 +416,7 @@ class SimulationEngine:
         except Exception:
             logger.exception("monitor.finalize() failed while recording skipped concrete")
 
-    def _write_exec_summary(self, result: ExecResult) -> None:
-        fields = (
-            "job_id",
-            "hint",
-            "reason",
-            "current_finished",
-            "current_failed",
-            "current_skipped",
-            "cumulative_finished",
-            "cumulative_failed",
-            "cumulative_skipped",
-        )
-        try:
-            cumulative = self._cumulative_concrete_summary_counts()
-            row = {
-                "job_id": self.job_id,
-                "hint": result.hint.value,
-                "reason": result.reason,
-                "current_finished": self.completed_concrete_runs,
-                "current_failed": self.failed_concrete_runs,
-                "current_skipped": self.skipped_concrete_runs,
-                "cumulative_finished": cumulative["finished"],
-                "cumulative_failed": cumulative["fail"],
-                "cumulative_skipped": cumulative["skipped"],
-            }
-            path = self.output_base / "summary.csv"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            should_write_header = not path.exists() or path.stat().st_size == 0
-            with path.open("a", newline="") as file:
-                writer = csv.DictWriter(file, fieldnames=fields)
-                if should_write_header:
-                    writer.writeheader()
-                writer.writerow(row)
-        except Exception:
-            logger.exception("Failed to write execution summary")
-
-    def _cumulative_concrete_summary_counts(self) -> dict[str, int]:
-        counts = {"finished": 0, "fail": 0, "skipped": 0}
-        logging_output_dir = getattr(self.monitor, "logging_output_dir", "monitor")
-        summary_output = getattr(self.monitor, "summary_output", "summary.csv")
-
-        for summary_path in self.output_base.glob(f"*/{logging_output_dir}/*.csv"):
-            if summary_path.name != summary_output:
-                continue
-            try:
-                with summary_path.open(newline="") as file:
-                    rows = list(csv.DictReader(file))
-            except Exception:
-                logger.exception("Failed to read concrete summary: %s", summary_path)
-                continue
-            if not rows:
-                continue
-            status = rows[-1].get("run.status")
-            if status in counts:
-                counts[status] += 1
-        return counts
+    def _completed_concrete_runs(self) -> int:
+        if self.monitor is None:
+            return 0
+        return self.monitor.current_summary_counts["finished"]

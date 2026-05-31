@@ -14,6 +14,7 @@ class SummaryContext:
     total_steps: int
     final_sim_time_ms: float
     wall_time_ms: float
+    speedup: float
     params: dict[str, Any]
     job_id: str
 

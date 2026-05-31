@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from simcore.execution import ShouldQuitResult
+from simcore.execution import ExecResult, RetryHint, ShouldQuitResult
 from simcore.monitor import Monitor
 
 
@@ -79,6 +79,7 @@ def assert_basic_summary_fields(row: dict[str, str], *, status: str, reason: str
     assert row["run.stop_reason"] == reason
     assert row["run.job_id"] == "unknown_job"
     assert float(row["run.wall_time_ms"]) >= 0
+    assert float(row["run.speedup"]) >= 0
 
 
 def test_monitor_merges_frame_recorders_every_n_steps(tmp_path: Path) -> None:
@@ -146,7 +147,7 @@ logging:
     ]
     assert [row["ego_to_agent_1.ttc_s"] for row in rows] == ["10.000000", "8.000000"]
 
-    summary_rows = read_csv(output_base / "case_1" / "monitor" / "summary.csv")
+    summary_rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
     assert len(summary_rows) == 1
     assert_basic_summary_fields(summary_rows[0], status="finished", reason="condition:timeout")
     assert summary_rows[0]["run.total_steps"] == "3"
@@ -300,7 +301,7 @@ logging:
     )
     monitor.finalize(status="finished", reason="completed")
 
-    rows = read_csv(output_base / "case_1" / "monitor" / "summary.csv")
+    rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
     assert len(rows) == 1
     assert_basic_summary_fields(rows[0], status="finished", reason="completed")
     assert rows[0]["run.total_steps"] == "2"
@@ -336,7 +337,7 @@ logging:
     monitor.finalize(status="finished", reason="completed")
     assert monitor.has_finished_summary("case_1") is True
 
-    rows = read_csv(output_base / "case_1" / "monitor" / "summary.csv")
+    rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
     assert [row["run.status"] for row in rows] == ["fail", "finished"]
     assert [row["run.stop_reason"] for row in rows] == [
         "RuntimeError: failed once",
@@ -368,9 +369,60 @@ logging:
     monitor.reset("case_1", overwrite_summary=True)
     monitor.finalize(status="fail", reason="RuntimeError: failed overwrite")
 
-    rows = read_csv(output_base / "case_1" / "monitor" / "summary.csv")
+    rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
     assert [row["run.status"] for row in rows] == ["fail"]
     assert [row["run.stop_reason"] for row in rows] == ["RuntimeError: failed overwrite"]
+
+
+def test_monitor_close_writes_current_and_cumulative_summary(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+        job_id="test",
+    )
+    monitor.current_summary_counts = {"finished": 1, "fail": 1, "skipped": 1}
+    monitor.current_sim_time_ms = 1000.0
+    monitor.current_wall_time_ms = 500.0
+
+    summary_dir = output_base / "iteration_1" / "monitor"
+    summary_dir.mkdir(parents=True)
+    (summary_dir / "result.csv").write_text("run.status,run.stop_reason\nfinished,completed\n")
+    summary_dir = output_base / "iteration_2" / "monitor"
+    summary_dir.mkdir(parents=True)
+    (summary_dir / "result.csv").write_text("run.status,run.stop_reason\nfail,retry: timeout\n")
+    summary_dir = output_base / "iteration_3" / "monitor"
+    summary_dir.mkdir(parents=True)
+    (summary_dir / "result.csv").write_text("run.status,run.stop_reason\nskipped,dont_retry\n")
+
+    monitor.close(ExecResult(1, RetryHint.OK, "completed"))
+
+    rows = read_csv(output_base / "summary.csv")
+    assert rows == [
+        {
+            "job_id": "test",
+            "hint": "ok",
+            "speedup": "2.0",
+            "current_finished": "1",
+            "current_failed": "1",
+            "current_skipped": "1",
+            "cumulative_finished": "1",
+            "cumulative_failed": "1",
+            "cumulative_skipped": "1",
+            "reason": "completed",
+        }
+    ]
 
 
 def test_monitor_logging_disabled_does_not_create_monitor_output(tmp_path: Path) -> None:

@@ -1,13 +1,14 @@
 import csv
 import logging
 from pathlib import Path
-from time import time
+from time import monotonic
 from typing import Any
 
 import yaml
 
 from simcore.av_wrapper import AVWrapper
 from simcore.conditions import ConditionCode, ConditionNode, build_condition_tree
+from simcore.execution import ExecResult
 from simcore.monitoring.frame_recorder_registry import build_frame_recorders
 from simcore.monitoring.log_manager import LogManager, LogStream
 from simcore.monitoring.recorder_registry import build_recorders
@@ -48,7 +49,7 @@ class Monitor:
         self.frame_logging_enabled = False
         self.summary_logging_enabled = False
         self.frame_output = "frame_metrics.csv"
-        self.summary_output = "summary.csv"
+        self.summary_output = "result.csv"
         self.frame_every_n_steps = 1
         self.logging_output_dir = "monitor"
         self.flush_every_n_rows = 100
@@ -59,6 +60,9 @@ class Monitor:
         self.params: dict[str, Any] = {}
         self.wall_start_time_s: float | None = None
         self.overwrite_summary = False
+        self.current_summary_counts = {"finished": 0, "fail": 0, "skipped": 0}
+        self.current_sim_time_ms = 0.0
+        self.current_wall_time_ms = 0.0
 
         if not config_path:
             logger.warning("No monitor config_path provided; condition monitoring is disabled.")
@@ -148,7 +152,7 @@ class Monitor:
             self.logging_enabled and summary_cfg.get("enabled", True)
         )
         self.frame_output = str(frame_cfg.get("output", "frame_metrics.csv"))
-        self.summary_output = str(summary_cfg.get("output", "summary.csv"))
+        self.summary_output = str(summary_cfg.get("output", "result.csv"))
         self.frame_every_n_steps = max(1, int(frame_cfg.get("every_n_steps", 1)))
         self.frame_recorders = (
             build_frame_recorders(frame_recorder_configs) if self.frame_logging_enabled else []
@@ -204,7 +208,6 @@ class Monitor:
                 "AV",
                 getattr(av_should_quit, "message", ""),
             )
-            logger.info(self.stop_reason)
             return True
         sim_should_quit = self.sim.should_quit()
         if sim_should_quit:
@@ -212,7 +215,6 @@ class Monitor:
                 "Simulator",
                 getattr(sim_should_quit, "message", ""),
             )
-            logger.info(self.stop_reason)
             return True
         return False
 
@@ -227,7 +229,7 @@ class Monitor:
         self.final_sim_time_ns = 0
         self.stop_reason = ""
         self.params = dict(params or {})
-        self.wall_start_time_s = time()
+        self.wall_start_time_s = monotonic()
         self.overwrite_summary = overwrite_summary
 
         if self.root:
@@ -254,6 +256,11 @@ class Monitor:
         status: str,
         reason: str = "",
     ) -> None:
+        wall_time_ms = self._wall_time_ms()
+        if status in self.current_summary_counts:
+            self.current_summary_counts[status] += 1
+        self.current_sim_time_ms += self.final_sim_time_ns / 1e6
+        self.current_wall_time_ms += wall_time_ms
         if not self.log_manager:
             return
 
@@ -262,11 +269,20 @@ class Monitor:
                 for row in recorder.finalize():
                     self.log_manager.write(row.stream, row.row)
 
-            summary_row = self._summary_row(status=status, reason=reason)
+            summary_row = self._summary_row(
+                status=status,
+                reason=reason,
+                wall_time_ms=wall_time_ms,
+            )
             if summary_row is not None:
                 self.log_manager.write(SUMMARY_STREAM, summary_row)
         finally:
             self._close_log_manager()
+
+    def close(self, result: ExecResult | None = None) -> None:
+        self._close_log_manager()
+        if result is not None:
+            self._write_exec_summary(result)
 
     def has_finished_summary(self, output_related: str) -> bool:
         rows = self.summary_rows(output_related)
@@ -341,16 +357,20 @@ class Monitor:
         self,
         status: str,
         reason: str,
+        wall_time_ms: float | None = None,
     ) -> dict[str, Any] | None:
         if not self.summary_logging_enabled:
             return None
+        if wall_time_ms is None:
+            wall_time_ms = self._wall_time_ms()
 
         context = SummaryContext(
             status=status,
             stop_reason=reason or self.stop_reason,
             total_steps=self.step_index,
             final_sim_time_ms=self.final_sim_time_ns / 1e6,
-            wall_time_ms=self._wall_time_ms(),
+            wall_time_ms=wall_time_ms,
+            speedup=self._speedup(wall_time_ms),
             params=self.params,
             job_id=self.job_id,
         )
@@ -401,6 +421,64 @@ class Monitor:
             self.log_manager.close()
             self.log_manager = None
 
+    def _write_exec_summary(self, result: ExecResult) -> None:
+        fields = (
+            "job_id",
+            "hint",
+            "speedup",
+            "current_finished",
+            "current_failed",
+            "current_skipped",
+            "cumulative_finished",
+            "cumulative_failed",
+            "cumulative_skipped",
+            "reason",
+        )
+        try:
+            cumulative = self._cumulative_concrete_summary_counts()
+            row = {
+                "job_id": self.job_id,
+                "hint": result.hint.value,
+                "speedup": self._current_speedup(),
+                "current_finished": self.current_summary_counts["finished"],
+                "current_failed": self.current_summary_counts["fail"],
+                "current_skipped": self.current_summary_counts["skipped"],
+                "cumulative_finished": cumulative["finished"],
+                "cumulative_failed": cumulative["fail"],
+                "cumulative_skipped": cumulative["skipped"],
+                "reason": result.reason,
+            }
+            path = Path(self.log_file).parent / "summary.csv"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            should_write_header = not path.exists() or path.stat().st_size == 0
+            with path.open("a", newline="") as file:
+                writer = csv.DictWriter(file, fieldnames=fields)
+                if should_write_header:
+                    writer.writeheader()
+                writer.writerow(row)
+        except Exception:
+            logger.exception("Failed to write execution summary")
+
+    def _cumulative_concrete_summary_counts(self) -> dict[str, int]:
+        counts = {"finished": 0, "fail": 0, "skipped": 0}
+        output_base = Path(self.log_file).parent
+
+        for summary_path in output_base.glob(f"*/{self.logging_output_dir}/*.csv"):
+            if summary_path.name != self.summary_output:
+                continue
+            try:
+                with summary_path.open(newline="") as file:
+                    rows = list(csv.DictReader(file))
+            except Exception:
+                logger.exception("Failed to read concrete summary: %s", summary_path)
+                continue
+            if not rows:
+                continue
+            status = rows[-1].get("run.status")
+            if status in counts:
+                counts[status] += 1
+        return counts
+
     @staticmethod
     def _should_quit_reason(component: str, message: str) -> str:
         reason = f"{component} requested to stop"
@@ -411,7 +489,19 @@ class Monitor:
     def _wall_time_ms(self) -> float:
         if self.wall_start_time_s is None:
             return 0.0
-        return (time() - self.wall_start_time_s) * 1000.0
+        return (monotonic() - self.wall_start_time_s) * 1000.0
+
+    def _speedup(self, wall_time_ms: float | None = None) -> float:
+        if wall_time_ms is None:
+            wall_time_ms = self._wall_time_ms()
+        if wall_time_ms <= 0:
+            return 0.0
+        return (self.final_sim_time_ns / 1e6) / wall_time_ms
+
+    def _current_speedup(self) -> float:
+        if self.current_wall_time_ms <= 0:
+            return 0.0
+        return self.current_sim_time_ms / self.current_wall_time_ms
 
     @staticmethod
     def _summary_recorder_configs(

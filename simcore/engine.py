@@ -4,6 +4,7 @@ from time import time
 from typing import Any
 
 from simcore.av_wrapper import AVWrapper
+from simcore.execution import ExecResult, RetryHint, ScenarioExecutionError
 from simcore.monitor import Monitor
 from simcore.sampler import create_sampler, load_parameter_space
 from simcore.sampler.loader import resolve_sampler_source
@@ -37,11 +38,21 @@ class SimulationEngine:
             logger.warning("No 'dt' specified in runtime_spec; defaulting to 0.01s")
             self._dt_s = 0.01
         self.overwrite = bool(runtime_spec.get("overwrite", False))
+        self.max_concrete_retries = int(runtime_spec.get("max_concrete_retries", 3))
 
         self.job_id = task_spec.get("job_id", "unknown_job")
         self.output_base = Path(task_spec.get("output_dir", "./outputs")).expanduser().resolve()
         self.output_base.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output base directory set to: {self.output_base}")
+        self._startup_error: ScenarioExecutionError | None = None
+        self.sim: SimWrapper | None = None
+        self.av: AVWrapper | None = None
+        self.monitor: Monitor | None = None
+        self.param_sampler = None
+        self.max_sampler_iterations = None
+        self.completed_concrete_runs = 0
+        self.skipped_concrete_runs = 0
+        self._last_skip_reason = ""
 
         self.position_parser = PositionParser.from_specs(scenario_spec, map_spec)
         try:
@@ -60,6 +71,10 @@ class SimulationEngine:
                 sim_spec=sim_spec,
                 dt_ns=int(self._dt_s * 1e9),
             )
+        except ScenarioExecutionError as exc:
+            logger.error("Simulator initialization failed: %s", exc)
+            self._startup_error = exc
+            return
         except Exception as exc:
             logger.error("Simulator initialization failed")
             self.position_parser.close()
@@ -71,6 +86,10 @@ class SimulationEngine:
                 dt_ns=int(self._dt_s * 1e9),
                 map_name=map_spec.get("name", "unknown_map"),
             )
+        except ScenarioExecutionError as exc:
+            logger.error("AV initialization failed: %s", exc)
+            self._startup_error = exc
+            return
         except Exception as exc:
             logger.error("AV initialization failed")
             self.position_parser.close()
@@ -112,14 +131,23 @@ class SimulationEngine:
         # after exec() (regardless of whether it raised) to tell the
         # manager whether the run was "useful" — a run with zero finished
         # concretes counts toward the permanent-fail streak.
-        self.completed_concrete_runs = 0
 
-    def exec(self) -> None:
+    def exec(self) -> ExecResult:
         """
         Run the scenario(s) according to the provided specifications.
         If a parameter sampler is provided, it will iterate through all parameter combinations;
         otherwise, it will run a single concrete scenario.
         """
+        if self._startup_error is not None:
+            try:
+                return ExecResult(
+                    completed_concrete_runs=self.completed_concrete_runs,
+                    hint=self._startup_error.hint,
+                    reason=str(self._startup_error),
+                )
+            finally:
+                self.close()
+
         try:
             if self.param_sampler is not None:
                 logger.info("Running logical scenario with parameter sampling.")
@@ -127,11 +155,27 @@ class SimulationEngine:
             else:
                 logger.info("Running single concrete scenario without parameter sampling.")
                 self.concrete_wrapper("concrete", self.sps)
+        except ScenarioExecutionError as e:
+            logger.error(f"Error during scenario execution: {e}")
+            return ExecResult(
+                completed_concrete_runs=self.completed_concrete_runs,
+                hint=e.hint,
+                reason=str(e),
+            )
         except Exception as e:
             logger.error(f"Error during scenario execution: {e}")
-            raise e
+            return ExecResult(
+                completed_concrete_runs=self.completed_concrete_runs,
+                hint=RetryHint.RETRY,
+                reason=f"{type(e).__name__}: {e}",
+            )
         else:
             logger.info("Scenario execution completed successfully.")
+            return ExecResult(
+                completed_concrete_runs=self.completed_concrete_runs,
+                hint=RetryHint.OK,
+                reason="completed",
+            )
         finally:
             self.close()
 
@@ -154,11 +198,19 @@ class SimulationEngine:
 
             try:
                 self.concrete_wrapper(f"iteration_{i + 1}", self.sps, params)
-            except RuntimeError as e:
+            except ScenarioExecutionError as e:
+                if e.skip_concrete:
+                    logger.warning(
+                        "Skipping concrete scenario at iteration %s because it is not runnable: %s",
+                        i + 1,
+                        e,
+                    )
+                    i += 1
+                    continue
                 logger.error(
                     f"Scenario execution failed at iteration {i + 1} with parameters: {params}"
                 )
-                raise e
+                raise
             i += 1
 
         logger.info("Completed all parameter combinations.")
@@ -169,17 +221,47 @@ class SimulationEngine:
         sps: ScenarioPack,
         params: dict[str, Any] | None = None,
     ) -> None:
-        if self.monitor.has_finished_summary(output_related) and not self.overwrite:
+        if self.monitor.has_terminal_summary(output_related) and not self.overwrite:
             logger.warning(
-                f"Finished summary already exists for {output_related}. Skipping execution."
+                f"Terminal summary already exists for {output_related}. Skipping execution."
             )
+            return
+        if (
+            not self.overwrite
+            and self.max_concrete_retries > 0
+            and self.monitor.count_retryable_failures(output_related) >= self.max_concrete_retries
+        ):
+            reason = (
+                f"retry: exceeded max_concrete_retries={self.max_concrete_retries}; "
+                "skipping concrete"
+            )
+            logger.warning("%s for %s", reason, output_related)
+            self._finalize_skipped_concrete(output_related, params, reason)
+            self._record_skipped_concrete(reason)
             return
 
         try:
             self.run_concrete(output_related, sps, params)
+        except ScenarioExecutionError as e:
+            if e.skip_concrete:
+                logger.warning(
+                    "Skipping concrete scenario %s because it is not runnable: %s",
+                    output_related,
+                    e,
+                )
+                if not e.summary_recorded:
+                    self._finalize_skipped_concrete(
+                        output_related,
+                        params,
+                        f"dont_retry: {e}",
+                    )
+                self._record_skipped_concrete(f"dont_retry: {e}")
+                return
+            logger.error(f"Error in concrete scenario execution for {output_related}: {e}")
+            raise
         except Exception as e:
             logger.error(f"Error in concrete scenario execution for {output_related}: {e}")
-            raise e
+            raise
         else:
             # Count the execution as soon as run_concrete returned cleanly.
             # Dry runs still count because the scenario did run.
@@ -258,7 +340,7 @@ class SimulationEngine:
                 ### sleep to sync with real time if we're running faster than real time
                 # if sim_time_need < sim_time_ns / 1e9:
                 #     time_to_sleep_s = (sim_time_ns / 1e9) - sim_time_need
-                #     sleep(time_to_sleep_s/2)
+                #     sleep(time_to_sleep_s)
 
             self.monitor.finalize(
                 status="finished",
@@ -272,6 +354,23 @@ class SimulationEngine:
                 )
             except Exception:
                 logger.exception("monitor.finalize() failed after keyboard interrupt")
+            raise
+        except ScenarioExecutionError as exc:
+            reason = str(exc)
+            status = "fail"
+            if exc.skip_concrete:
+                status = "skipped"
+                reason = f"dont_retry: {reason}"
+            if exc.hint == RetryHint.RETRY:
+                reason = f"retry: {reason}"
+            try:
+                self.monitor.finalize(
+                    status=status,
+                    reason=reason,
+                )
+                exc.summary_recorded = True
+            except Exception:
+                logger.exception("monitor.finalize() failed after scenario error")
             raise
         except Exception as exc:
             try:
@@ -288,15 +387,37 @@ class SimulationEngine:
         )
 
     def close(self):
-        try:
-            self.av.stop()
-        except Exception:
-            logger.exception("av.stop() failed")
-        try:
-            self.sim.stop()
-        except Exception:
-            logger.exception("sim.stop() failed")
+        if self.av is not None:
+            try:
+                self.av.stop()
+            except Exception:
+                logger.exception("av.stop() failed")
+        if self.sim is not None:
+            try:
+                self.sim.stop()
+            except Exception:
+                logger.exception("sim.stop() failed")
         try:
             self.position_parser.close()
         except Exception:
             logger.exception("position_parser.close() failed")
+
+    def _record_skipped_concrete(self, reason: str) -> None:
+        self.skipped_concrete_runs += 1
+        self._last_skip_reason = reason
+
+    def _finalize_skipped_concrete(
+        self,
+        output_related: str,
+        params: dict[str, Any] | None,
+        reason: str,
+    ) -> None:
+        try:
+            self.monitor.reset(
+                output_related,
+                params=params,
+                overwrite_summary=self.overwrite,
+            )
+            self.monitor.finalize(status="skipped", reason=reason)
+        except Exception:
+            logger.exception("monitor.finalize() failed while recording skipped concrete")

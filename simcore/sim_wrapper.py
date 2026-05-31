@@ -15,6 +15,7 @@ from pisa_api import (
     sim_server_pb2_grpc,
 )
 
+from simcore.execution import classify_grpc_error
 from simcore.utils.control import Ctrl
 from simcore.utils.sps import ScenarioPack
 from simcore.utils.util import get_cfg
@@ -83,10 +84,11 @@ class SimWrapper:
                 path=path_pb2.Path(path=scenario_spec.get("path")),
             ),
         )
-        response = self._stub.Init(request, timeout=self._timeout)
-        logger.info(f"Init response: {response.msg}")
-        if not response.success:
-            raise RuntimeError(f"Server Init returned success=false: {response.msg}")
+        try:
+            self._stub.Init(request, timeout=self._timeout)
+        except grpc.RpcError as e:
+            raise classify_grpc_error(e, service="sim", operation="init") from e
+        logger.info("Simulator init completed")
 
     def reset(
         self,
@@ -104,7 +106,7 @@ class SimWrapper:
             resp = self._stub.Reset(req, timeout=self._timeout)
             return resp.frame
         except grpc.RpcError as e:
-            raise RuntimeError(f"SimWrapper Reset failed: {e.code().name} - {e.details()}") from e
+            raise classify_grpc_error(e, service="sim", operation="reset") from e
 
     def step(self, ctrl_cmd: Ctrl, time_stamp_ns: int):
         self._ensure_ready()
@@ -127,7 +129,7 @@ class SimWrapper:
             resp = self._stub.Step(req, timeout=self._timeout)
             return resp.frame
         except grpc.RpcError as e:
-            raise RuntimeError(f"SimWrapper Step failed: {e.code().name} - {e.details()}") from e
+            raise classify_grpc_error(e, service="sim", operation="step") from e
 
     def stop(self):
         """

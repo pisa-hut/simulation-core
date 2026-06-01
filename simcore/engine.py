@@ -40,6 +40,10 @@ class SimulationEngine:
         self.overwrite = bool(runtime_spec.get("overwrite", False))
         self.max_concrete_retries = int(runtime_spec.get("max_concrete_retries", 3))
         self._speedup_ratio = runtime_spec.get("speedup_ratio", 0)
+        value = runtime_spec.get("permutation")
+        self._permutation = int(value) if value is not None else None
+        if self._permutation is not None and self._permutation < 1:
+            raise ValueError("runtime.permutation must be a positive 1-based index")
         self._dt_s = runtime_spec.get("dt", None)
         if self._dt_s is None or self._dt_s <= 0:
             raise ValueError(f"Invalid dt value: {self._dt_s}. dt must be a positive number.")
@@ -127,6 +131,8 @@ class SimulationEngine:
             )
             self.param_sampler = None
             self.max_sampler_iterations = None
+            if self._permutation not in (None, 1):
+                raise ValueError("runtime.permutation can only be 1 for a concrete scenario")
 
     def exec(self) -> ExecResult:
         """
@@ -185,6 +191,10 @@ class SimulationEngine:
 
         logger.debug(f"Total parameter combinations: {total}")
 
+        if self._permutation is not None:
+            self._run_logical_permutation(total)
+            return
+
         i = 0
         while self.max_sampler_iterations is None or i < self.max_sampler_iterations:
             progress_total = total if total is not None else "unknown"
@@ -218,6 +228,30 @@ class SimulationEngine:
             i += 1
 
         logger.info("Completed all parameter combinations.")
+
+    def _run_logical_permutation(self, total: int | None) -> None:
+        permutation = self._permutation
+        if total is not None and permutation > total:
+            raise ValueError(
+                f"runtime.permutation={permutation} is out of range; sampler has {total} sample(s)"
+            )
+
+        logger.info("Running only permutation %s/%s", permutation, total or "unknown")
+        params = None
+        for index in range(1, permutation + 1):
+            params = self.param_sampler.next()
+            if params is None:
+                raise ValueError(
+                    f"runtime.permutation={permutation} is out of range; sampler ended at {index - 1}"
+                )
+
+        logger.info(
+            "====================== Sampling iteration %s/%s ======================",
+            permutation,
+            total or "unknown",
+        )
+        logger.info(f"Sampled parameters: {json.dumps(params)}")
+        self.concrete_wrapper(f"iteration_{permutation}", self.sps, params)
 
     def concrete_wrapper(
         self,
@@ -254,10 +288,10 @@ class SimulationEngine:
         except ScenarioExecutionError as e:
             if e.skip_concrete:
                 logger.warning(
-                    "Skipping concrete scenario %s because it is not runnable: %s",
+                    "Skipping concrete scenario %s because it is not runnable",
                     output_related,
-                    e,
                 )
+                logger.warning(f"reason: {e}")
                 if not e.summary_recorded:
                     self._finalize_skipped_concrete(
                         output_related,

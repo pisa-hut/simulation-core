@@ -47,6 +47,22 @@ class FakeMonitor:
         }
 
 
+class FakeSampler:
+    def __init__(self, samples):
+        self.samples = list(samples)
+        self.index = 0
+
+    def total_samples(self):
+        return len(self.samples)
+
+    def next(self):
+        if self.index >= len(self.samples):
+            return None
+        sample = self.samples[self.index]
+        self.index += 1
+        return sample
+
+
 def make_engine(
     tmp_path: Path,
     finished: bool = False,
@@ -60,6 +76,7 @@ def make_engine(
     engine.output_base = tmp_path / "outputs"
     engine.job_id = "test"
     engine._last_skip_reason = ""
+    engine._permutation = None
     return engine
 
 
@@ -276,6 +293,70 @@ def test_exec_returns_ok_when_only_concrete_was_skipped(tmp_path: Path) -> None:
 
     assert result.hint == RetryHint.OK
     assert result.reason == "completed"
+
+
+def test_run_logical_runs_only_requested_permutation(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine.param_sampler = FakeSampler(
+        [
+            {"speed": 10},
+            {"speed": 20},
+            {"speed": 30},
+        ]
+    )
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = 2
+    calls = []
+
+    def concrete_wrapper(output_related, sps, params=None):
+        calls.append((output_related, params))
+
+    engine.concrete_wrapper = concrete_wrapper
+
+    engine.run_logical()
+
+    assert calls == [("iteration_2", {"speed": 20})]
+    assert engine.param_sampler.index == 2
+
+
+def test_run_logical_without_permutation_runs_all_iterations(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine.param_sampler = FakeSampler(
+        [
+            {"speed": 10},
+            {"speed": 20},
+            {"speed": 30},
+        ]
+    )
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = None
+    calls = []
+
+    def concrete_wrapper(output_related, sps, params=None):
+        calls.append((output_related, params))
+
+    engine.concrete_wrapper = concrete_wrapper
+
+    engine.run_logical()
+
+    assert calls == [
+        ("iteration_1", {"speed": 10}),
+        ("iteration_2", {"speed": 20}),
+        ("iteration_3", {"speed": 30}),
+    ]
+
+
+def test_run_logical_rejects_out_of_range_permutation(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine.param_sampler = FakeSampler([{"speed": 10}])
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = 2
+
+    with pytest.raises(ValueError, match="out of range"):
+        engine.run_logical()
 
 
 class KeyboardInterruptMonitor(FakeMonitor):

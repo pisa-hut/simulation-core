@@ -24,13 +24,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _sample_output_and_params(raw_sample: Sample | dict[str, Any], index: int) -> tuple[str, dict]:
-    if isinstance(raw_sample, Sample):
-        sample_id = raw_sample.id if raw_sample.id is not None else str(index)
-        return f"iteration_{sample_id}", dict(raw_sample.params)
-    if isinstance(raw_sample, dict):
-        return f"iteration_{index}", raw_sample
-    raise TypeError(f"Sampler returned unsupported sample type: {type(raw_sample).__name__}")
+def _sample_output_and_params(sample: Sample, index: int) -> tuple[str, dict]:
+    sample_id = sample.id if sample.id is not None else str(index)
+    return f"iteration_{sample_id}", dict(sample.params)
 
 
 class SimulationEngine:
@@ -204,12 +200,12 @@ class SimulationEngine:
         i = 0
         while self.max_sampler_iterations is None or i < self.max_sampler_iterations:
             progress_total = total if total is not None else "unknown"
-            raw_sample = self.param_sampler.next()
+            sample = self.param_sampler.next()
 
-            if raw_sample is None:
+            if sample is None:
                 logger.debug("Parameter sampling completed.")
                 break
-            output_related, params = _sample_output_and_params(raw_sample, i + 1)
+            output_related, params = _sample_output_and_params(sample, i + 1)
 
             logger.info(
                 f"====================== Sampling iteration {i + 1}/{progress_total} ======================"
@@ -244,14 +240,14 @@ class SimulationEngine:
             )
 
         logger.info("Running only permutation %s/%s", permutation, total or "unknown")
-        raw_sample = None
+        sample = None
         for index in range(1, permutation + 1):
-            raw_sample = self.param_sampler.next()
-            if raw_sample is None:
+            sample = self.param_sampler.next()
+            if sample is None:
                 raise ValueError(
                     f"runtime.permutation={permutation} is out of range; sampler ended at {index - 1}"
                 )
-        output_related, params = _sample_output_and_params(raw_sample, permutation)
+        output_related, params = _sample_output_and_params(sample, permutation)
 
         logger.info(
             "====================== Sampling iteration %s/%s ======================",

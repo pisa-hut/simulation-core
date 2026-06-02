@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from simcore.sampler.base import ParamDict, ParameterSpace, Sampler, TestResult
+from simcore.sampler.base import ParameterSpace, Sample, Sampler, TestResult
 from simcore.sampler.sequences import default_sample_count, sobol_units, units_to_params
 
 
@@ -29,11 +29,11 @@ class SobolSampler(Sampler):
     def next(
         self,
         past_results: Iterable[TestResult] | None = None,
-    ) -> ParamDict | None:
+    ) -> Sample | None:
         if self._index < self._n_samples:
-            sample = self._samples[self._index]
+            params = self._samples[self._index]
             self._index += 1
-            return sample
+            return Sample(params=params)
 
         return None
 

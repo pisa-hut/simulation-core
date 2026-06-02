@@ -43,6 +43,11 @@ def _effective_sampler_spec(method: str, **config):
     return {"_config_loaded": True, "method": method, **config}
 
 
+def _params(sample: Sample | None):
+    assert sample is not None
+    return sample.params
+
+
 def test_load_parameter_space_from_xosc(tmp_path: Path) -> None:
     param_file = tmp_path / "scenario_param.xosc"
     param_file.write_text(PVD_XML, encoding="utf-8")
@@ -64,10 +69,10 @@ def test_grid_search_sampler_iterates_cartesian_product() -> None:
     sampler = GridSearchSampler(parameter_space=space)
 
     assert sampler.total_samples() == 4
-    assert sampler.next() == {"speed": 10.0, "offset": -1.0}
-    assert sampler.next() == {"speed": 10.0, "offset": 0.0}
-    assert sampler.next() == {"speed": 20.0, "offset": -1.0}
-    assert sampler.next() == {"speed": 20.0, "offset": 0.0}
+    assert _params(sampler.next()) == {"speed": 10.0, "offset": -1.0}
+    assert _params(sampler.next()) == {"speed": 10.0, "offset": 0.0}
+    assert _params(sampler.next()) == {"speed": 20.0, "offset": -1.0}
+    assert _params(sampler.next()) == {"speed": 20.0, "offset": 0.0}
     assert sampler.next() is None
 
 
@@ -83,8 +88,11 @@ def test_grid_search_sampler_ignores_past_results_for_now() -> None:
         past_results=[{"params": {"speed": "10.0", "offset": "-1.0"}}],
     )
 
-    assert sampler.next() == {"speed": 10.0, "offset": -1.0}
-    assert sampler.next([{"speed": 20.0, "offset": -1.0}]) == {"speed": 10.0, "offset": 0.0}
+    assert _params(sampler.next()) == {"speed": 10.0, "offset": -1.0}
+    assert _params(sampler.next([{"speed": 20.0, "offset": -1.0}])) == {
+        "speed": 10.0,
+        "offset": 0.0,
+    }
 
 
 def test_create_sampler_uses_builtin_registry() -> None:
@@ -93,7 +101,7 @@ def test_create_sampler_uses_builtin_registry() -> None:
     sampler = create_sampler(_effective_sampler_spec("grid"), space)
 
     assert isinstance(sampler, GridSearchSampler)
-    assert sampler.next() == {"speed": 10.0}
+    assert _params(sampler.next()) == {"speed": 10.0}
 
 
 def test_create_sampler_supports_lhs_registry() -> None:
@@ -121,10 +129,10 @@ def test_lhs_sampler_maps_continuous_domain_values() -> None:
     )
 
     sampler = create_sampler(_effective_sampler_spec("lhs", n_samples=5, seed=7), space)
-    samples = [sampler.next() for _ in range(5)]
+    samples = [_params(sampler.next()) for _ in range(5)]
 
-    assert all(10.0 <= sample["speed"] <= 30.0 for sample in samples if sample is not None)
-    assert all(isinstance(sample["count"], int) for sample in samples if sample is not None)
+    assert all(10.0 <= sample["speed"] <= 30.0 for sample in samples)
+    assert all(isinstance(sample["count"], int) for sample in samples)
 
 
 def test_create_sampler_supports_sobol_registry() -> None:
@@ -139,14 +147,14 @@ def test_create_sampler_supports_sobol_registry() -> None:
 
     assert isinstance(sampler, SobolSampler)
     assert sampler.total_samples() == 3
-    assert sampler.next() == {"speed": 40.0, "offset": 0.0}
+    assert _params(sampler.next()) == {"speed": 40.0, "offset": 0.0}
 
 
 def test_sobol_sampler_maps_continuous_domain_values() -> None:
     space = ParameterSpace.from_specs([ParameterSpec("speed", bounds=(10.0, 30.0))])
 
     sampler = create_sampler(_effective_sampler_spec("sobol", n_samples=3), space)
-    samples = [sampler.next() for _ in range(3)]
+    samples = [_params(sampler.next()) for _ in range(3)]
 
     assert samples == [{"speed": 25.0}, {"speed": 15.0}, {"speed": 17.5}]
 
@@ -169,8 +177,8 @@ def test_grid_sampler_discretizes_domain_with_config() -> None:
     )
 
     assert sampler.total_samples() == 9
-    assert sampler.next() == {"speed": 10.0, "offset": -1.0}
-    assert sampler.next() == {"speed": 10.0, "offset": 0.0}
+    assert _params(sampler.next()) == {"speed": 10.0, "offset": -1.0}
+    assert _params(sampler.next()) == {"speed": 10.0, "offset": 0.0}
 
 
 def test_grid_sampler_parameter_config_overrides_global_config() -> None:
@@ -195,9 +203,9 @@ def test_grid_sampler_parameter_config_overrides_global_config() -> None:
     )
 
     assert sampler.total_samples() == 9
-    assert sampler.next() == {"speed": 0.0, "duration": 0.0}
-    assert sampler.next() == {"speed": 0.0, "duration": 0.5}
-    assert sampler.next() == {"speed": 0.0, "duration": 1.0}
+    assert _params(sampler.next()) == {"speed": 0.0, "duration": 0.0}
+    assert _params(sampler.next()) == {"speed": 0.0, "duration": 0.5}
+    assert _params(sampler.next()) == {"speed": 0.0, "duration": 1.0}
 
 
 def test_grid_sampler_rejects_unknown_parameter_config() -> None:
@@ -258,7 +266,7 @@ def test_native_sampler_uses_openscenario_parameter_values() -> None:
     sampler = create_sampler(_effective_sampler_spec("native"), space)
 
     assert isinstance(sampler, OpenScenarioNativeSampler)
-    assert sampler.next() == {"speed": 10.0}
+    assert _params(sampler.next()) == {"speed": 10.0}
 
 
 def test_parse_parameter_range_yaml(tmp_path: Path) -> None:

@@ -6,9 +6,9 @@ from logging import getLogger
 from typing import Any
 
 from .base import (
-    ParamDict,
     ParameterSpace,
     ParameterSpec,
+    Sample,
     Sampler,
     TestResult,
 )
@@ -51,10 +51,10 @@ class GridSearchSampler(Sampler):
     def next(
         self,
         past_results: Iterable[TestResult] | None = None,
-    ) -> ParamDict | None:
+    ) -> Sample | None:
         for values in self._combinations:
             self._emitted += 1
-            return dict(zip(self._names, values, strict=True))
+            return Sample(params=dict(zip(self._names, values, strict=True)))
 
         return None
 

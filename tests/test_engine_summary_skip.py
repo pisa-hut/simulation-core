@@ -53,7 +53,10 @@ class FakeMonitor:
 
 class FakeSampler:
     def __init__(self, samples):
-        self.samples = list(samples)
+        self.samples = [
+            sample if isinstance(sample, Sample) else Sample(params=sample)
+            for sample in samples
+        ]
         self.index = 0
 
     def total_samples(self):

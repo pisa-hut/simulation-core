@@ -338,9 +338,10 @@ samples:
 Each explicit sample must have a unique `id` and a `params` mapping. Samples do not need to modify
 the same parameter names.
 
-Samplers return one parameter dictionary or one named sample per iteration. Finite samplers can
-expose `total_samples()` for progress reporting; adaptive samplers may return `None` when the total
-is not known ahead of time.
+Samplers return one `Sample` per iteration. When `Sample.id` is omitted, the engine uses the
+1-based sequence number for output folders such as `iteration_1`; when `Sample.id` is set, the
+engine uses `iteration_<id>`. Finite samplers can expose `total_samples()` for progress reporting;
+adaptive samplers may return `None` when the total is not known ahead of time.
 
 Sampler config must be provided through a YAML/JSON file via `sampler.config_path`. Runtime
 `sampler` only accepts `method` and `config_path`; put `source`, `max_samples`, and sampler

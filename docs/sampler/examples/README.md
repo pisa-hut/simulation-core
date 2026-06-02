@@ -6,7 +6,7 @@ Runner specs can keep sampler selection small:
 {
   "sampler": {
     "method": "lhs",
-    "config_path": "./sampler_config_examples/lhs.yaml"
+    "config_path": "./docs/sampler/examples/lhs.yaml"
   }
 }
 ```

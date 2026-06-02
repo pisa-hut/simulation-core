@@ -14,7 +14,7 @@ class FakeMonitor:
         self.retryable_failures = 0
         self.finalize_calls = []
         self.close_result = None
-        self.current_summary_counts = {"finished": 0, "fail": 0, "skipped": 0, "abort": 0}
+        self.current_summary_counts = {"finished": 0, "error": 0, "skipped": 0, "abort": 0}
 
     def has_finished_summary(self, output_related: str) -> bool:
         return self.status == "finished"
@@ -156,8 +156,8 @@ def test_concrete_wrapper_does_not_overwrite_previous_aborted_summary(tmp_path: 
     assert ran is False
 
 
-def test_concrete_wrapper_reruns_previous_retryable_failure(tmp_path: Path) -> None:
-    engine = make_engine(tmp_path, status="fail")
+def test_concrete_wrapper_reruns_previous_retryable_error(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, status="error")
     ran = False
 
     def run_concrete(output_related, sps, params=None):
@@ -386,5 +386,5 @@ def test_run_concrete_records_keyboard_interrupt_and_reraises(tmp_path: Path) ->
         engine.run_concrete("case_1", sps=None)
 
     assert monitor.finalize_calls == [
-        ("fail", "KeyboardInterrupt: interrupted by user"),
+        ("error", "KeyboardInterrupt: interrupted by user"),
     ]

@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_STREAM = "summary"
 FRAME_STREAM = "frame"
+EXECUTION_STATUSES = ("finished", "error", "skipped", "abort")
+TEST_OUTCOMES = ("success", "fail", "invalid", "unknown")
 
 
 class Monitor:
@@ -57,10 +59,18 @@ class Monitor:
         self.step_index = 0
         self.final_sim_time_ns = 0
         self.stop_reason = ""
+        self.stop_condition_name = ""
+        self.test_outcome = "unknown"
         self.params: dict[str, Any] = {}
         self.wall_start_time_s: float | None = None
         self.overwrite_summary = False
-        self.current_summary_counts = {"finished": 0, "fail": 0, "skipped": 0, "abort": 0}
+        self.current_summary_counts = {"finished": 0, "error": 0, "skipped": 0, "abort": 0}
+        self.current_test_outcome_counts = {
+            "success": 0,
+            "fail": 0,
+            "invalid": 0,
+            "unknown": 0,
+        }
         self.current_sim_time_ms = 0.0
         self.current_wall_time_ms = 0.0
 
@@ -71,7 +81,7 @@ class Monitor:
         self._load_config(config_path)
         self._configure_logging()
 
-        condition_cfg = self.cfg.get("condition", self.cfg.get("stop_condition"))
+        condition_cfg = self._stop_condition_config()
         if condition_cfg is not None:
             if not isinstance(condition_cfg, dict):
                 raise ValueError(
@@ -195,8 +205,10 @@ class Monitor:
         if self.root:
             result = self.root.evaluate()
             if result.code == ConditionCode.TRIGGERED:
+                self.stop_condition_name = result.trigger_name or result.condition_name
+                self.test_outcome = result.test_outcome or "unknown"
                 self.stop_reason = (
-                    f"Stop condition '{result.condition_name}' triggered: {result.detail}"
+                    f"Stop condition '{self.stop_condition_name}' triggered: {result.detail}"
                 )
                 logger.info(
                     self.stop_reason,
@@ -204,6 +216,8 @@ class Monitor:
                 return True
         av_should_quit = self.av.should_quit()
         if av_should_quit:
+            self.stop_condition_name = "av_should_quit"
+            self.test_outcome = "unknown"
             self.stop_reason = self._should_quit_reason(
                 "AV",
                 getattr(av_should_quit, "message", ""),
@@ -211,6 +225,8 @@ class Monitor:
             return True
         sim_should_quit = self.sim.should_quit()
         if sim_should_quit:
+            self.stop_condition_name = "sim_should_quit"
+            self.test_outcome = "unknown"
             self.stop_reason = self._should_quit_reason(
                 "Simulator",
                 getattr(sim_should_quit, "message", ""),
@@ -228,6 +244,8 @@ class Monitor:
         self.step_index = 0
         self.final_sim_time_ns = 0
         self.stop_reason = ""
+        self.stop_condition_name = ""
+        self.test_outcome = "unknown"
         self.params = dict(params or {})
         self.wall_start_time_s = monotonic()
         self.overwrite_summary = overwrite_summary
@@ -255,10 +273,19 @@ class Monitor:
         self,
         status: str,
         reason: str = "",
+        test_outcome: str | None = None,
+        stop_condition: str | None = None,
     ) -> None:
         wall_time_ms = self._wall_time_ms()
-        if status in self.current_summary_counts:
-            self.current_summary_counts[status] += 1
+        effective_status = self._normalize_execution_status(status)
+        effective_test_outcome = self._normalize_test_outcome(
+            test_outcome if test_outcome is not None else self.test_outcome
+        )
+        effective_stop_condition = (
+            stop_condition if stop_condition is not None else self.stop_condition_name
+        )
+        self.current_summary_counts[effective_status] += 1
+        self.current_test_outcome_counts[effective_test_outcome] += 1
         self.current_sim_time_ms += self.final_sim_time_ns / 1e6
         self.current_wall_time_ms += wall_time_ms
         if not self.log_manager:
@@ -270,8 +297,10 @@ class Monitor:
                     self.log_manager.write(row.stream, row.row)
 
             summary_row = self._summary_row(
-                status=status,
+                status=effective_status,
                 reason=reason,
+                test_outcome=effective_test_outcome,
+                stop_condition=effective_stop_condition,
                 wall_time_ms=wall_time_ms,
             )
             if summary_row is not None:
@@ -285,7 +314,7 @@ class Monitor:
             self._write_exec_summary(result)
 
     def logical_terminal_counts(self) -> dict[str, int]:
-        counts = self._cumulative_concrete_summary_counts()
+        counts = self._cumulative_concrete_status_counts()
         return {
             "finished": counts["finished"],
             "abort": counts["abort"],
@@ -304,7 +333,7 @@ class Monitor:
         if not rows:
             return None
 
-        return rows[-1].get("run.status")
+        return self._normalize_execution_status(rows[-1].get("run.status"))
 
     def has_terminal_summary(self, output_related: str) -> bool:
         return self.last_summary_status(output_related) in {"finished", "skipped", "abort"}
@@ -313,7 +342,7 @@ class Monitor:
         return sum(
             1
             for row in self.summary_rows(output_related)
-            if row.get("run.status") == "fail"
+            if self._normalize_execution_status(row.get("run.status")) == "error"
             and row.get("run.stop_reason", "").startswith("retry:")
         )
 
@@ -368,6 +397,8 @@ class Monitor:
         self,
         status: str,
         reason: str,
+        test_outcome: str = "unknown",
+        stop_condition: str = "",
         wall_time_ms: float | None = None,
     ) -> dict[str, Any] | None:
         if not self.summary_logging_enabled:
@@ -377,6 +408,8 @@ class Monitor:
 
         context = SummaryContext(
             status=status,
+            test_outcome=test_outcome,
+            stop_condition=stop_condition,
             stop_reason=reason or self.stop_reason,
             total_steps=self.step_index,
             final_sim_time_ms=self.final_sim_time_ns / 1e6,
@@ -438,29 +471,46 @@ class Monitor:
             "hint",
             "speedup",
             "current_finished",
-            "current_failed",
+            "current_error",
             "current_abort",
             "current_skipped",
+            "current_success",
+            "current_test_fail",
+            "current_invalid",
+            "current_unknown",
             "cumulative_finished",
-            "cumulative_failed",
+            "cumulative_error",
             "cumulative_abort",
             "cumulative_skipped",
+            "cumulative_success",
+            "cumulative_test_fail",
+            "cumulative_invalid",
+            "cumulative_unknown",
             "reason",
         )
         try:
-            cumulative = self._cumulative_concrete_summary_counts()
+            cumulative = self._cumulative_concrete_status_counts()
+            cumulative_outcomes = self._cumulative_concrete_test_outcome_counts()
             row = {
                 "job_id": self.job_id,
                 "hint": result.hint.value,
                 "speedup": self._current_speedup(),
                 "current_finished": self.current_summary_counts["finished"],
-                "current_failed": self.current_summary_counts["fail"],
+                "current_error": self.current_summary_counts["error"],
                 "current_abort": self.current_summary_counts["abort"],
                 "current_skipped": self.current_summary_counts["skipped"],
+                "current_success": self.current_test_outcome_counts["success"],
+                "current_test_fail": self.current_test_outcome_counts["fail"],
+                "current_invalid": self.current_test_outcome_counts["invalid"],
+                "current_unknown": self.current_test_outcome_counts["unknown"],
                 "cumulative_finished": cumulative["finished"],
-                "cumulative_failed": cumulative["fail"],
+                "cumulative_error": cumulative["error"],
                 "cumulative_abort": cumulative["abort"],
                 "cumulative_skipped": cumulative["skipped"],
+                "cumulative_success": cumulative_outcomes["success"],
+                "cumulative_test_fail": cumulative_outcomes["fail"],
+                "cumulative_invalid": cumulative_outcomes["invalid"],
+                "cumulative_unknown": cumulative_outcomes["unknown"],
                 "reason": result.reason,
             }
             path = Path(self.log_file).parent / "summary.csv"
@@ -474,8 +524,22 @@ class Monitor:
         except Exception:
             logger.exception("Failed to write execution summary")
 
-    def _cumulative_concrete_summary_counts(self) -> dict[str, int]:
-        counts = {"finished": 0, "fail": 0, "skipped": 0, "abort": 0}
+    def _cumulative_concrete_status_counts(self) -> dict[str, int]:
+        counts = {"finished": 0, "error": 0, "skipped": 0, "abort": 0}
+        for row in self._latest_concrete_summary_rows():
+            status = self._normalize_execution_status(row.get("run.status"))
+            counts[status] += 1
+        return counts
+
+    def _cumulative_concrete_test_outcome_counts(self) -> dict[str, int]:
+        counts = {outcome: 0 for outcome in TEST_OUTCOMES}
+        for row in self._latest_concrete_summary_rows():
+            outcome = self._normalize_test_outcome(row.get("run.test_outcome", "unknown"))
+            counts[outcome] += 1
+        return counts
+
+    def _latest_concrete_summary_rows(self) -> list[dict[str, str]]:
+        rows_by_path = []
         output_base = Path(self.log_file).parent
 
         for summary_path in output_base.glob(f"*/{self.logging_output_dir}/*.csv"):
@@ -489,10 +553,39 @@ class Monitor:
                 continue
             if not rows:
                 continue
-            status = rows[-1].get("run.status")
-            if status in counts:
-                counts[status] += 1
-        return counts
+            rows_by_path.append(rows[-1])
+        return rows_by_path
+
+    def _stop_condition_config(self) -> dict | None:
+        if not self.cfg:
+            return None
+
+        condition_cfg = self.cfg.get("stop_condition", self.cfg.get("condition"))
+        if condition_cfg is None:
+            condition_cfg = self.cfg.get("stop_conditions")
+        if condition_cfg is None:
+            return None
+        if isinstance(condition_cfg, list):
+            return {
+                "type": "or",
+                "name": "stop_conditions",
+                "children": condition_cfg,
+            }
+        return condition_cfg
+
+    @staticmethod
+    def _normalize_test_outcome(raw_outcome: Any) -> str:
+        normalized = str(raw_outcome or "unknown").strip().lower()
+        return normalized if normalized in TEST_OUTCOMES else "unknown"
+
+    @staticmethod
+    def _normalize_execution_status(raw_status: Any) -> str:
+        normalized = str(raw_status or "error").strip().lower()
+        if normalized == "fail":
+            return "error"
+        if normalized in EXECUTION_STATUSES:
+            return normalized
+        return "error"
 
     @staticmethod
     def _should_quit_reason(component: str, message: str) -> str:

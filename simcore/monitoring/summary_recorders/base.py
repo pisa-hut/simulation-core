@@ -10,6 +10,8 @@ from simcore.monitoring.sample import MonitorSample
 @dataclass(frozen=True)
 class SummaryContext:
     status: str
+    test_outcome: str
+    stop_condition: str
     stop_reason: str
     total_steps: int
     final_sim_time_ms: float

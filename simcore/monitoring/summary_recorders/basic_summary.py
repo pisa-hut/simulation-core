@@ -7,13 +7,15 @@ from .base import SummaryContext, SummaryRecorder
 
 BASIC_SUMMARY_FIELDS = (
     "status",
+    "test_outcome",
+    "stop_condition",
+    "stop_reason",
     "total_steps",
     "final_sim_time_ms",
     "wall_time_ms",
     "speedup",
     "job_id",
     "params",
-    "stop_reason",
 )
 
 
@@ -24,6 +26,8 @@ class BasicSummaryRecorder(SummaryRecorder):
     def record(self, context: SummaryContext) -> dict[str, Any]:
         return {
             "status": context.status,
+            "test_outcome": context.test_outcome,
+            "stop_condition": context.stop_condition,
             "stop_reason": context.stop_reason,
             "total_steps": context.total_steps,
             "final_sim_time_ms": context.final_sim_time_ms,

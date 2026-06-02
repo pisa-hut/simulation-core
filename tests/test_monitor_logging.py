@@ -76,6 +76,8 @@ def read_csv(path: Path) -> list[dict[str, str]]:
 
 def assert_basic_summary_fields(row: dict[str, str], *, status: str, reason: str) -> None:
     assert row["run.status"] == status
+    assert row["run.test_outcome"] == "unknown"
+    assert row["run.stop_condition"] == ""
     assert row["run.stop_reason"] == reason
     assert row["run.job_id"] == "unknown_job"
     assert float(row["run.wall_time_ms"]) >= 0
@@ -330,7 +332,7 @@ logging:
     )
 
     monitor.reset("case_1")
-    monitor.finalize(status="fail", reason="RuntimeError: failed once")
+    monitor.finalize(status="error", reason="RuntimeError: failed once")
     assert monitor.has_finished_summary("case_1") is False
 
     monitor.reset("case_1")
@@ -338,7 +340,7 @@ logging:
     assert monitor.has_finished_summary("case_1") is True
 
     rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
-    assert [row["run.status"] for row in rows] == ["fail", "finished"]
+    assert [row["run.status"] for row in rows] == ["error", "finished"]
     assert [row["run.stop_reason"] for row in rows] == [
         "RuntimeError: failed once",
         "completed",
@@ -367,10 +369,10 @@ logging:
     monitor.finalize(status="finished", reason="first run")
 
     monitor.reset("case_1", overwrite_summary=True)
-    monitor.finalize(status="fail", reason="RuntimeError: failed overwrite")
+    monitor.finalize(status="error", reason="RuntimeError: failed overwrite")
 
     rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
-    assert [row["run.status"] for row in rows] == ["fail"]
+    assert [row["run.status"] for row in rows] == ["error"]
     assert [row["run.stop_reason"] for row in rows] == ["RuntimeError: failed overwrite"]
 
 
@@ -392,7 +394,7 @@ logging:
         sim=FakeEndpoint(),
         job_id="test",
     )
-    monitor.current_summary_counts = {"finished": 1, "fail": 1, "skipped": 1, "abort": 1}
+    monitor.current_summary_counts = {"finished": 1, "error": 1, "skipped": 1, "abort": 1}
     monitor.current_sim_time_ms = 1000.0
     monitor.current_wall_time_ms = 500.0
 
@@ -418,13 +420,21 @@ logging:
             "hint": "ok",
             "speedup": "2.0",
             "current_finished": "1",
-            "current_failed": "1",
+            "current_error": "1",
             "current_abort": "1",
             "current_skipped": "1",
+            "current_success": "0",
+            "current_test_fail": "0",
+            "current_invalid": "0",
+            "current_unknown": "0",
             "cumulative_finished": "1",
-            "cumulative_failed": "1",
+            "cumulative_error": "1",
             "cumulative_abort": "1",
             "cumulative_skipped": "1",
+            "cumulative_success": "0",
+            "cumulative_test_fail": "0",
+            "cumulative_invalid": "0",
+            "cumulative_unknown": "4",
             "reason": "completed",
         }
     ]
@@ -477,6 +487,97 @@ condition:
     assert monitor.should_stop() is True
     assert monitor.stop_reason.startswith("Stop condition 'timeout_guard' triggered:")
     assert "Timeout detected" in monitor.stop_reason
+
+
+def test_monitor_condition_list_defaults_to_or_and_records_test_outcome(
+    tmp_path: Path,
+) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+
+condition:
+  - type: timeout
+    name: timeout_guard
+    outcome: Fail
+    timeout_ms: 1
+  - type: collision
+    name: collision_guard
+    outcome: Invalid
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.update(2_000_000, SimpleNamespace(objects=[]), None)
+
+    assert monitor.should_stop() is True
+    assert monitor.stop_condition_name == "timeout_guard"
+    assert monitor.test_outcome == "fail"
+
+    monitor.finalize(status="finished", reason=monitor.stop_reason)
+    rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
+
+    assert rows[0]["run.status"] == "finished"
+    assert rows[0]["run.test_outcome"] == "fail"
+    assert rows[0]["run.stop_condition"] == "timeout_guard"
+    assert rows[0]["run.stop_reason"].startswith("Stop condition 'timeout_guard' triggered:")
+
+
+def test_monitor_records_outcome_from_top_level_compound_condition(
+    tmp_path: Path,
+) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+
+condition:
+  - type: and
+    name: invalid_cut_in_setup
+    outcome: Invalid
+    children:
+      - type: timeout
+        name: timeout_a
+        timeout_ms: 1
+      - type: timeout
+        name: timeout_b
+        timeout_ms: 1
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.update(2_000_000, SimpleNamespace(objects=[]), None)
+
+    assert monitor.should_stop() is True
+    assert monitor.stop_condition_name == "invalid_cut_in_setup"
+    assert monitor.test_outcome == "invalid"
+
+    monitor.finalize(status="finished", reason=monitor.stop_reason)
+    rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
+
+    assert rows[0]["run.test_outcome"] == "invalid"
+    assert rows[0]["run.stop_condition"] == "invalid_cut_in_setup"
 
 
 def test_monitor_stop_reason_includes_av_should_quit_message(tmp_path: Path) -> None:

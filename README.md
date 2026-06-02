@@ -83,7 +83,7 @@ A runner spec has these top-level sections:
 
 - `dt`: simulation step size in seconds. If omitted, defaults to `0.01`.
 - `log_level`: Python logging level for the runner.
-- `overwrite`: when `true`, run even if the last summary row is already `finished` and overwrite the previous `summary.csv` history for that concrete run. When `false`, finished runs are skipped and failed retries append new summary rows.
+- `overwrite`: when `true`, run even if the last summary row is already `finished` and overwrite the previous `summary.csv` history for that concrete run. When `false`, finished runs are skipped and error retries append new summary rows.
 
 ### `task`
 
@@ -326,16 +326,20 @@ For each concrete scenario, `SimulationEngine.run_concrete()` does:
 If an exception occurs, the engine tries:
 
 ```python
-monitor.finalize(status="fail", reason=f"{type(exc).__name__}: {exc}")
+monitor.finalize(status="error", reason=f"{type(exc).__name__}: {exc}")
 ```
 
-The original exception is re-raised even if monitor finalization fails. When `runtime.overwrite` is `false`, failed attempts and later successful retries remain visible in `summary.csv`. When `runtime.overwrite` is `true`, the new attempt replaces the previous summary history.
+The original exception is re-raised even if monitor finalization fails. When `runtime.overwrite` is `false`, error attempts and later successful retries remain visible in `summary.csv`. When `runtime.overwrite` is `true`, the new attempt replaces the previous summary history.
+
+`run.status` is the execution status and stays focused on runner behavior:
+`finished`, `error`, `skipped`, or `abort`. Test semantics are written separately
+as `run.test_outcome`: `success`, `fail`, `invalid`, or `unknown`.
 
 ## Monitor Config
 
 The monitor has two responsibilities:
 
-- `condition`: decide when the scenario should stop.
+- `stop_condition`: decide when the scenario should stop. `condition` remains as a legacy alias.
 - `logging`: write frame metrics, table logs, and summary metrics.
 
 These are intentionally separate. Logging never controls scenario stop. If a metric should also stop the scenario, put the calculation in `simcore.metrics` and use it from both a condition and a recorder.
@@ -391,7 +395,7 @@ logging:
         name: ego
         actor_id: 0
 
-condition:
+stop_condition:
   type: or
   name: stop_conditions
   children:
@@ -441,18 +445,42 @@ final_sim_time_ms
 
 ## Stop Conditions
 
-Stop conditions are configured as a tree:
+Stop conditions can be configured as a list. The monitor wraps the list in a
+default top-level `or`, so each listed item is an alternative stop condition:
 
 ```yaml
-condition:
+stop_condition:
+  - type: collision
+    name: ego_collision
+    outcome: Fail
+    actor_id_a: 0
+
+  - type: reach_target_position
+    name: ego_reaches_goal
+    outcome: Success
+    target: ego
+```
+
+Top-level stop conditions should set `outcome` (`Success`, `Fail`, or
+`Invalid`). Nested conditions inside a top-level `and`/`or` can omit it; the
+outer child condition owns the recorded test outcome. `Invalid` is intended for
+valid executions that do not represent the intended test situation, such as
+scenario parameters producing an impossible or irrelevant maneuver.
+
+For more complex logic, use an explicit tree:
+
+```yaml
+stop_condition:
   type: or
   name: stop_conditions
   children:
     - type: timeout
       name: timeout_30s
+      outcome: Success
       timeout_ms: 30000
     - type: collision
       name: collision_guard
+      outcome: Fail
       actor_id_a: 0
 ```
 
@@ -469,9 +497,11 @@ Built-in leaf conditions:
 | `collision` | `simcore/conditions/custom_conditions/collision.py` | Stop when simulator-reported collision matches optional actor filter. |
 | `reach_target_position` | `simcore/conditions/custom_conditions/reach_target_position.py` | Stop when an actor reaches a configured target position. |
 | `kinematic_threshold` | `simcore/conditions/custom_conditions/kinematic_threshold.py` | Stop when selected actor kinematic fields satisfy a numeric rule. |
+| `relative_position` | `simcore/conditions/custom_conditions/relative_position.py` | Stop when a target actor is in a selected relative direction from a source actor. |
 | `pair_ttc` | `simcore/conditions/custom_conditions/pair_ttc.py` | Stop when pair TTC falls below `threshold_s`. |
 
-When a condition stops the scenario, `summary.csv` receives a detailed stop reason, for example:
+When a condition stops the scenario, the concrete `result.csv` receives
+`run.stop_condition`, `run.test_outcome`, and a detailed `run.stop_reason`, for example:
 
 ```text
 Stop condition 'low_ttc_ego_to_agent_1' triggered: TTC between actor 0 and actor 1 is below threshold: ttc=0.850s threshold=1.000s
@@ -488,12 +518,47 @@ Stop condition 'low_ttc_ego_to_agent_1' triggered: TTC between actor 0 and actor
   value: [10.0, 0.0]       # [value, eps] for single-value rules
 
 - type: kinematic_threshold
-  name: agent1_z_inside_range
+  name: agent1_z_out_of_range
   agents: [1]
   metric: z
   rule: not_between
   values: [-2.0, 2.0]
 ```
+
+`relative_position` uses the source actor's yaw as 0 degrees. Positive angles are
+counter-clockwise, so target on the source actor's left side has positive angle.
+Eight sectors split the 360 degrees into 45-degree bins starting from source-forward:
+
+```text
+sector 0: [0, 45)       sector 1: [45, 90)
+sector 2: [90, 135)     sector 3: [135, 180)
+sector 4: [-180, -135)  sector 5: [-135, -90)
+sector 6: [-90, -45)    sector 7: [-45, 0)
+```
+
+```yaml
+- type: relative_position
+  name: ego_is_straight_ahead_of_agent_1
+  source_actor_id: 1
+  target_actor_id: 0
+  direction: straight       # sectors 0 and 7
+
+- type: relative_position
+  name: ego_is_front_of_agent_1
+  source: 1
+  target: ego
+  direction: front          # sectors 0, 1, 6, 7
+
+- type: relative_position
+  name: target_in_custom_angle_range
+  source: 1
+  target: 2
+  angle_range_deg: [-30, 30]
+```
+
+Direction aliases include `straight`, `front`, `left`, `right`, `rear`,
+`front_left`, `front_right`, `rear_left`, and `rear_right`. You can also use
+`sectors: [0, 7]`, or set `sector_index_base: 1` to write sectors as `1..8`.
 
 ## Logging Pipelines
 
@@ -591,12 +656,16 @@ Built-in summary recorders:
 | `min_ttc` | `min_ttc_s` | Tracks minimum finite TTC for an actor pair. |
 | `max_speed` | `max_speed_mps` | Tracks maximum speed for one actor. |
 
-`summary.csv` example:
+`result.csv` example:
 
 ```csv
-run.status,run.stop_reason,run.total_steps,run.final_sim_time_ms,run.wall_time_ms,run.job_id,run.params,ego_to_agent_1.min_ttc_s,ego.max_speed_mps
-finished,completed,600,6000.000000,8100.000000,0,"{""speed"": ""10""}",1.250000,14.500000
+run.status,run.test_outcome,run.stop_condition,run.stop_reason,run.total_steps,run.final_sim_time_ms,run.wall_time_ms,run.job_id,run.params,ego_to_agent_1.min_ttc_s,ego.max_speed_mps
+finished,success,ego_reaches_goal,"Stop condition 'ego_reaches_goal' triggered: ...",600,6000.000000,8100.000000,0,"{""speed"": ""10""}",1.250000,14.500000
 ```
+
+The logical scenario summary at `outputs/<task>/summary.csv` aggregates both
+execution statuses and test outcomes with fields such as `current_success`,
+`current_test_fail`, `current_invalid`, and their cumulative counterparts.
 
 ## Built-in Metrics
 
@@ -618,7 +687,7 @@ The purpose is to avoid coupling conditions to logging while still sharing calcu
 
 Completion and failure history are tracked by `monitor/summary.csv`.
 
-If the last `run.status` is `finished`, `concrete_wrapper()` skips the run when `runtime.overwrite` is `false`. If the last status is `fail`, the runner attempts the scenario again and appends another summary row. If `runtime.overwrite` is `true`, the runner ignores previous status and overwrites the existing `summary.csv` with the new attempt, whether that attempt finishes or fails.
+If the last `run.status` is `finished`, `concrete_wrapper()` skips the run when `runtime.overwrite` is `false`. If the last status is `error`, the runner attempts the scenario again and appends another summary row. Legacy rows with `run.status=fail` are treated as `error` for retry and aggregation. If `runtime.overwrite` is `true`, the runner ignores previous status and overwrites the existing `summary.csv` with the new attempt, whether that attempt finishes or errors.
 
 The runner no longer creates `status/completed.txt` or `status/error.txt`. Existing status directories from older runs are not removed automatically.
 
@@ -663,7 +732,7 @@ CONDITION_REGISTRY = {
 Use:
 
 ```yaml
-condition:
+stop_condition:
   type: my_condition
   name: my_condition_1
 ```

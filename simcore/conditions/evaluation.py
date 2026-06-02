@@ -13,3 +13,5 @@ class EvaluationResult:
     condition_name: str
     code: ConditionCode
     detail: str = ""
+    test_outcome: str | None = None
+    trigger_name: str | None = None

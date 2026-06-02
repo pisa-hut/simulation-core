@@ -379,7 +379,7 @@ class SimulationEngine:
         except KeyboardInterrupt:
             try:
                 self.monitor.finalize(
-                    status="fail",
+                    status="error",
                     reason="KeyboardInterrupt: interrupted by user",
                 )
             except Exception:
@@ -387,7 +387,7 @@ class SimulationEngine:
             raise
         except ScenarioExecutionError as exc:
             reason = str(exc)
-            status = "fail"
+            status = "error"
             if exc.skip_concrete:
                 status = "skipped"
                 reason = f"dont_retry: {reason}"
@@ -405,7 +405,7 @@ class SimulationEngine:
         except Exception as exc:
             try:
                 self.monitor.finalize(
-                    status="fail",
+                    status="error",
                     reason=f"{type(exc).__name__}: {exc}",
                 )
             except Exception:

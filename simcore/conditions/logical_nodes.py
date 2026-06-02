@@ -72,6 +72,8 @@ class OrNode(ConditionNode):
                 return self.result(
                     ConditionCode.TRIGGERED,
                     f"{result.condition_name} triggered: {result.detail}",
+                    test_outcome=result.test_outcome or self.test_outcome,
+                    trigger_name=result.trigger_name or result.condition_name,
                 )
 
             if result.code == ConditionCode.NOT_EVALUATED:

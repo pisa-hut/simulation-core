@@ -10,4 +10,5 @@ This folder keeps detailed usage and implementation notes out of the root README
 Examples live next to the component that uses them:
 
 - [Sampler examples](sampler/examples/)
-- [Monitor example config](monitor/examples/monitor_config_example.yaml)
+- [Monitor logging example](monitor/examples/logging_config_example.yaml)
+- [Monitor stop condition example](monitor/examples/stop_condition_config_example.yaml)

@@ -7,7 +7,8 @@
 ```json
 {
   "monitor": {
-    "config_path": "./docs/monitor/examples/monitor_config_example.yaml"
+    "logging_config_path": "./docs/monitor/examples/logging_config_example.yaml",
+    "stop_condition_config_path": "./docs/monitor/examples/stop_condition_config_example.yaml"
   }
 }
 ```
@@ -16,21 +17,28 @@ The current engine instantiates `simcore.monitor.Monitor` directly.
 
 ## Config Shape
 
+Logging config:
+
 ```yaml
 logging:
   enabled: true
   output_dir: monitor
   flush_every_n_rows: 100
   float_precision: 6
-
-stop_condition:
-  - type: collision
-    name: ego_collision
-    outcome: Fail
-    actor_id_a: 0
 ```
 
-See [monitor_config_example.yaml](monitor/examples/monitor_config_example.yaml) for a complete example.
+Stop condition config:
+
+```yaml
+- type: collision
+  name: ego_collision
+  outcome: Fail
+  actor_id_a: 0
+```
+
+See [logging_config_example.yaml](examples/logging_config_example.yaml) and
+[stop_condition_config_example.yaml](examples/stop_condition_config_example.yaml) for complete
+examples.
 
 ## Logging Output
 
@@ -65,16 +73,15 @@ final_sim_time_ms
 Stop conditions can be configured as a list. The monitor wraps the list in a default top-level `or`, so each listed item is an alternative stop condition:
 
 ```yaml
-stop_condition:
-  - type: collision
-    name: ego_collision
-    outcome: Fail
-    actor_id_a: 0
+- type: collision
+  name: ego_collision
+  outcome: Fail
+  actor_id_a: 0
 
-  - type: reach_target_position
-    name: ego_reaches_goal
-    outcome: Success
-    target: ego
+- type: reach_target_position
+  name: ego_reaches_goal
+  outcome: Success
+  target: ego
 ```
 
 Top-level stop conditions should set `outcome`:
@@ -88,18 +95,17 @@ Nested conditions inside top-level `and`/`or` can omit `outcome`; the outer chil
 For more complex logic, use an explicit tree:
 
 ```yaml
-stop_condition:
-  type: or
-  name: stop_conditions
-  children:
-    - type: timeout
-      name: timeout_30s
-      outcome: Success
-      timeout_ms: 30000
-    - type: collision
-      name: collision_guard
-      outcome: Fail
-      actor_id_a: 0
+type: or
+name: stop_conditions
+children:
+  - type: timeout
+    name: timeout_30s
+    outcome: Success
+    timeout_ms: 30000
+  - type: collision
+    name: collision_guard
+    outcome: Fail
+    actor_id_a: 0
 ```
 
 Logical nodes:

@@ -107,10 +107,11 @@ class SimulationEngine:
             raise exc
 
         self.monitor = Monitor(
-            config_path=monitor_spec.get("config_path", None),
             log_file=str(self.output_base / "monitor_log.csv"),
             av=self.av,
             sim=self.sim,
+            logging_config_path=monitor_spec.get("logging_config_path", None),
+            stop_condition_config_path=monitor_spec.get("stop_condition_config_path", None),
             sps=self.sps,
             position_parser=self.position_parser,
             job_id=self.job_id,

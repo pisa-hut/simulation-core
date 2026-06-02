@@ -1,0 +1,28 @@
+# Example stop condition config.
+#
+# A list is treated as a default top-level OR. Each top-level item should set
+# outcome: Success, Fail, or Invalid.
+
+- type: collision
+  name: collision_guard
+  outcome: Fail
+  actor_id_a: 0
+  max_buffer_size: 1
+
+- type: timeout
+  name: timeout_45s
+  outcome: Invalid
+  timeout_ms: 45000
+
+# - type: pair_ttc
+#   name: low_ttc_ego_to_agent_1
+#   outcome: Fail
+#   actor_id_a: 0
+#   actor_id_b: 1
+#   threshold_s: 1.0
+
+- type: reach_target_position
+  name: ego_reaches_goal
+  outcome: Success
+  target: ego
+  distance_threshold_m: 2.0

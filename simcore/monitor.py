@@ -28,10 +28,11 @@ TEST_OUTCOMES = ("success", "fail", "invalid", "unknown")
 class Monitor:
     def __init__(
         self,
-        config_path: str | None,
         log_file: str,
         av: AVWrapper,
         sim: SimWrapper,
+        logging_config_path: str | None = None,
+        stop_condition_config_path: str | None = None,
         sps=None,
         position_parser=None,
         job_id: str = "unknown_job",
@@ -41,7 +42,8 @@ class Monitor:
         self.sim = sim
         self.job_id = job_id
 
-        self.cfg: dict | None = None
+        self.logging_cfg: dict | None = None
+        self.stop_condition_cfg: dict | list | None = None
         self.root: ConditionNode | None = None
         self.frame_recorders = []
         self.table_recorders = []
@@ -79,12 +81,27 @@ class Monitor:
             "params": self.params,
         }
 
-        if not config_path:
-            logger.warning("No monitor config_path provided; condition monitoring is disabled.")
-            return
+        if logging_config_path:
+            self.logging_cfg = self._load_mapping_config(logging_config_path, "monitor logging")
+            if "logging" not in self.logging_cfg:
+                raise ValueError("Monitor logging config must contain 'logging'")
+            if any(
+                key in self.logging_cfg
+                for key in ("condition", "stop_condition", "stop_conditions")
+            ):
+                raise ValueError(
+                    "Monitor logging config must not contain stop condition fields; "
+                    "use monitor.stop_condition_config_path"
+                )
+            self._configure_logging()
 
-        self._load_config(config_path)
-        self._configure_logging()
+        if stop_condition_config_path:
+            self.stop_condition_cfg = self._load_stop_condition_config(stop_condition_config_path)
+            if isinstance(self.stop_condition_cfg, dict) and "logging" in self.stop_condition_cfg:
+                raise ValueError(
+                    "Monitor stop condition config must not contain logging; "
+                    "use monitor.logging_config_path"
+                )
 
         condition_cfg = self._stop_condition_config()
         if condition_cfg is not None:
@@ -99,20 +116,37 @@ class Monitor:
             )
             logger.debug("Built condition tree: %s", self.root)
         elif not self.logging_enabled:
-            raise ValueError(
-                "Monitor config must contain 'condition', 'logging.frame.recorders', "
-                "'logging.tables', or 'logging.summary.recorders'"
+            logger.warning(
+                "No monitor logging_config_path or stop_condition_config_path provided; "
+                "monitoring is disabled."
             )
 
-    def _load_config(self, path: str) -> None:
-        self.cfg = yaml.safe_load(Path(path).read_text())
-        if not isinstance(self.cfg, dict):
+    @staticmethod
+    def _load_mapping_config(path: str, config_name: str) -> dict:
+        cfg = yaml.safe_load(Path(path).read_text())
+        if cfg is None:
+            return {}
+        if not isinstance(cfg, dict):
             raise ValueError(
-                f"Monitor config at {path!r} must deserialize to a mapping, got {type(self.cfg).__name__}"
+                f"{config_name} config at {path!r} must deserialize to a mapping, "
+                f"got {type(cfg).__name__}"
             )
+        return cfg
+
+    @staticmethod
+    def _load_stop_condition_config(path: str) -> dict | list | None:
+        cfg = yaml.safe_load(Path(path).read_text())
+        if cfg is None:
+            return None
+        if not isinstance(cfg, (dict, list)):
+            raise ValueError(
+                "Monitor stop condition config at "
+                f"{path!r} must deserialize to a mapping or list, got {type(cfg).__name__}"
+            )
+        return cfg
 
     def _configure_logging(self) -> None:
-        logging_cfg = self.cfg.get("logging", {}) if self.cfg else {}
+        logging_cfg = self.logging_cfg.get("logging", {}) if self.logging_cfg else {}
         if logging_cfg is None:
             logging_cfg = {}
         if not isinstance(logging_cfg, dict):
@@ -563,12 +597,17 @@ class Monitor:
         return rows_by_path
 
     def _stop_condition_config(self) -> dict | None:
-        if not self.cfg:
+        if self.stop_condition_cfg is None:
             return None
 
-        condition_cfg = self.cfg.get("stop_condition", self.cfg.get("condition"))
-        if condition_cfg is None:
-            condition_cfg = self.cfg.get("stop_conditions")
+        condition_cfg = self.stop_condition_cfg
+        if isinstance(condition_cfg, dict):
+            wrapped_cfg = condition_cfg.get("stop_condition", condition_cfg.get("condition"))
+            if wrapped_cfg is None:
+                wrapped_cfg = condition_cfg.get("stop_conditions")
+            if wrapped_cfg is not None:
+                condition_cfg = wrapped_cfg
+
         if condition_cfg is None:
             return None
         if isinstance(condition_cfg, list):

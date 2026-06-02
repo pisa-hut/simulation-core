@@ -22,8 +22,8 @@ class FakeShouldQuitEndpoint:
         return self.result
 
 
-def write_config(tmp_path: Path, content: str) -> Path:
-    path = tmp_path / "monitor.yaml"
+def write_config(tmp_path: Path, content: str, name: str = "monitor.yaml") -> Path:
+    path = tmp_path / name
     path.write_text(content)
     return path
 
@@ -110,7 +110,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -173,7 +173,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -217,7 +217,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -276,7 +276,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -327,7 +327,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -361,7 +361,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -390,7 +390,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -443,17 +443,16 @@ logging:
 
 
 def test_monitor_logging_disabled_does_not_create_monitor_output(tmp_path: Path) -> None:
-    config_path = write_config(
+    stop_condition_config_path = write_config(
         tmp_path,
         """
-condition:
-  type: timeout
-  timeout_ms: 1000
+type: timeout
+timeout_ms: 1000
 """,
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        stop_condition_config_path=str(stop_condition_config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -467,17 +466,16 @@ condition:
 
 
 def test_monitor_stop_reason_includes_condition_detail(tmp_path: Path) -> None:
-    config_path = write_config(
+    stop_condition_config_path = write_config(
         tmp_path,
         """
-condition:
-  type: timeout
-  name: timeout_guard
-  timeout_ms: 1
+type: timeout
+name: timeout_guard
+timeout_ms: 1
 """,
     )
     monitor = Monitor(
-        config_path=str(config_path),
+        stop_condition_config_path=str(stop_condition_config_path),
         log_file=str(tmp_path / "outputs" / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -491,30 +489,108 @@ condition:
     assert "Timeout detected" in monitor.stop_reason
 
 
+def test_monitor_rejects_stop_condition_in_logging_config(tmp_path: Path) -> None:
+    logging_config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+condition:
+  type: timeout
+  timeout_ms: 1
+""",
+    )
+
+    try:
+        Monitor(
+            logging_config_path=str(logging_config_path),
+            log_file=str(tmp_path / "outputs" / "monitor_log.csv"),
+            av=FakeEndpoint(),
+            sim=FakeEndpoint(),
+        )
+    except ValueError as exc:
+        assert "stop condition fields" in str(exc)
+    else:
+        raise AssertionError("expected monitor logging config with condition to be rejected")
+
+
+def test_monitor_rejects_logging_config_without_logging_key(tmp_path: Path) -> None:
+    logging_config_path = write_config(
+        tmp_path,
+        """
+frame:
+  recorders: []
+""",
+    )
+
+    try:
+        Monitor(
+            logging_config_path=str(logging_config_path),
+            log_file=str(tmp_path / "outputs" / "monitor_log.csv"),
+            av=FakeEndpoint(),
+            sim=FakeEndpoint(),
+        )
+    except ValueError as exc:
+        assert "must contain 'logging'" in str(exc)
+    else:
+        raise AssertionError("expected monitor logging config without logging to be rejected")
+
+
+def test_monitor_rejects_logging_in_stop_condition_config(tmp_path: Path) -> None:
+    stop_condition_config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+stop_condition:
+  type: timeout
+  timeout_ms: 1
+""",
+    )
+
+    try:
+        Monitor(
+            stop_condition_config_path=str(stop_condition_config_path),
+            log_file=str(tmp_path / "outputs" / "monitor_log.csv"),
+            av=FakeEndpoint(),
+            sim=FakeEndpoint(),
+        )
+    except ValueError as exc:
+        assert "must not contain logging" in str(exc)
+    else:
+        raise AssertionError("expected monitor stop condition config with logging to be rejected")
+
+
 def test_monitor_condition_list_defaults_to_or_and_records_test_outcome(
     tmp_path: Path,
 ) -> None:
-    config_path = write_config(
+    logging_config_path = write_config(
         tmp_path,
         """
 logging:
   enabled: true
   summary:
     include_basic: true
-
-condition:
-  - type: timeout
-    name: timeout_guard
-    outcome: Fail
-    timeout_ms: 1
-  - type: collision
-    name: collision_guard
-    outcome: Invalid
 """,
+        name="logging.yaml",
+    )
+    stop_condition_config_path = write_config(
+        tmp_path,
+        """
+- type: timeout
+  name: timeout_guard
+  outcome: Fail
+  timeout_ms: 1
+- type: collision
+  name: collision_guard
+  outcome: Invalid
+""",
+        name="stop_condition.yaml",
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(logging_config_path),
+        stop_condition_config_path=str(stop_condition_config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -539,30 +615,36 @@ condition:
 def test_monitor_records_outcome_from_top_level_compound_condition(
     tmp_path: Path,
 ) -> None:
-    config_path = write_config(
+    logging_config_path = write_config(
         tmp_path,
         """
 logging:
   enabled: true
   summary:
     include_basic: true
-
-condition:
-  - type: and
-    name: invalid_cut_in_setup
-    outcome: Invalid
-    children:
-      - type: timeout
-        name: timeout_a
-        timeout_ms: 1
-      - type: timeout
-        name: timeout_b
-        timeout_ms: 1
 """,
+        name="logging.yaml",
+    )
+    stop_condition_config_path = write_config(
+        tmp_path,
+        """
+- type: and
+  name: invalid_cut_in_setup
+  outcome: Invalid
+  children:
+    - type: timeout
+      name: timeout_a
+      timeout_ms: 1
+    - type: timeout
+      name: timeout_b
+      timeout_ms: 1
+""",
+        name="stop_condition.yaml",
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(logging_config_path),
+        stop_condition_config_path=str(stop_condition_config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -583,26 +665,32 @@ condition:
 
 
 def test_monitor_parameter_expression_uses_reset_params(tmp_path: Path) -> None:
-    config_path = write_config(
+    logging_config_path = write_config(
         tmp_path,
         """
 logging:
   enabled: true
   summary:
     include_basic: true
-
-stop_condition:
-  - type: parameter_expression
-    name: invalid_speed_gap
-    outcome: Invalid
-    expression: "abs(a_speed - b_speed)"
-    rule: le
-    value: 5
 """,
+        name="logging.yaml",
+    )
+    stop_condition_config_path = write_config(
+        tmp_path,
+        """
+- type: parameter_expression
+  name: invalid_speed_gap
+  outcome: Invalid
+  expression: "abs(a_speed - b_speed)"
+  rule: le
+  value: 5
+""",
+        name="stop_condition.yaml",
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(logging_config_path),
+        stop_condition_config_path=str(stop_condition_config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -633,7 +721,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeShouldQuitEndpoint(should_quit=True, message="route complete"),
         sim=FakeEndpoint(),
@@ -659,7 +747,7 @@ logging:
     av = FakeShouldQuitEndpoint(should_quit=True, message="route complete")
     sim = FakeShouldQuitEndpoint(should_quit=True, message="simulation complete")
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=av,
         sim=sim,
@@ -685,7 +773,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        config_path=str(config_path),
+        logging_config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeShouldQuitEndpoint(should_quit=True, message="simulation complete"),

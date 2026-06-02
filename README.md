@@ -468,12 +468,31 @@ Built-in leaf conditions:
 | `timeout` | `simcore/conditions/custom_conditions/timeout.py` | Stop after simulation time exceeds `timeout_ms`. |
 | `collision` | `simcore/conditions/custom_conditions/collision.py` | Stop when simulator-reported collision matches optional actor filter. |
 | `reach_target_position` | `simcore/conditions/custom_conditions/reach_target_position.py` | Stop when an actor reaches a configured target position. |
+| `kinematic_threshold` | `simcore/conditions/custom_conditions/kinematic_threshold.py` | Stop when selected actor kinematic fields satisfy a numeric rule. |
 | `pair_ttc` | `simcore/conditions/custom_conditions/pair_ttc.py` | Stop when pair TTC falls below `threshold_s`. |
 
 When a condition stops the scenario, `summary.csv` receives a detailed stop reason, for example:
 
 ```text
 Stop condition 'low_ttc_ego_to_agent_1' triggered: TTC between actor 0 and actor 1 is below threshold: ttc=0.850s threshold=1.000s
+```
+
+`kinematic_threshold` supports these fields:
+
+```yaml
+- type: kinematic_threshold
+  name: any_agent_y_too_large
+  agents: any              # any, *, all, one integer, or a list of integers
+  metric: y                # any numeric kinematic field, e.g. x, y, z, speed
+  rule: gt                 # gt/ge/lt/le/eq/between/not_between, or symbols > >= < <= ==
+  value: [10.0, 0.0]       # [value, eps] for single-value rules
+
+- type: kinematic_threshold
+  name: agent1_z_inside_range
+  agents: [1]
+  metric: z
+  rule: not_between
+  values: [-2.0, 2.0]
 ```
 
 ## Logging Pipelines

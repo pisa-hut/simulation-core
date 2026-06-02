@@ -40,10 +40,10 @@ logging:
       actor_id_a: 0
       deduplicate: true
 
-  # Scenario-level metrics are merged into one row in summary.csv.
+  # Scenario-level metrics are merged into one row in result.csv.
   # basic_summary is included by default as `run.*`.
   summary:
-    output: summary.csv
+    output: result.csv
     include_basic: true
     recorders:
       - type: min_ttc
@@ -65,14 +65,14 @@ condition:
       max_buffer_size: 1
 
     - type: timeout
-      name: timeout_30s
-      timeout_ms: 30000
+      name: timeout_45s
+      timeout_ms: 45000
 
-    - type: pair_ttc
-      name: low_ttc_ego_to_agent_1
-      actor_id_a: 0
-      actor_id_b: 1
-      threshold_s: 1.0
+    # - type: pair_ttc
+    #   name: low_ttc_ego_to_agent_1
+    #   actor_id_a: 0
+    #   actor_id_b: 1
+    #   threshold_s: 1.0
 
     - type: reach_target_position
       name: ego_reaches_goal

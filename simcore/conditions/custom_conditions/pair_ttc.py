@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 
 from simcore.conditions import ConditionCode, ConditionNode, EvaluationResult
+from simcore.metrics.rules import NumericRule
 from simcore.metrics.ttc import PairTTCResult, compute_pair_ttc
 
 
@@ -19,6 +20,7 @@ class PairTTCCondition(ConditionNode):
         self.threshold_s = float(config["threshold_s"])
         if self.threshold_s < 0:
             raise ValueError("PairTTCCondition threshold_s must be >= 0")
+        self.rule = NumericRule.from_config("lt", self.threshold_s, field_name="threshold_s")
 
         try:
             max_buffer_size = int(config.get("max_buffer_size", 1))
@@ -44,7 +46,7 @@ class PairTTCCondition(ConditionNode):
             if result is None:
                 continue
             latest_result = result
-            if result.ttc_s is not None and result.ttc_s < self.threshold_s:
+            if result.ttc_s is not None and self.rule.matches(result.ttc_s):
                 return self.result(
                     ConditionCode.TRIGGERED,
                     self._triggered_detail(result),

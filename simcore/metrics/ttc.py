@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from math import cos, hypot, sin
 from typing import Any
 
+from simcore.metrics.actors import find_actor, float_attr, object_kinematic
+
 
 @dataclass(frozen=True)
 class PairTTCResult:
@@ -59,36 +61,6 @@ def compute_pair_ttc(
         closing_speed_mps=closing_speed_mps,
         ttc_s=ttc_s,
     )
-
-
-def find_actor(objects: Any, actor_id: int):
-    for index, obj in enumerate(objects or []):
-        if object_actor_id(obj, index) == actor_id:
-            return obj
-    return None
-
-
-def object_actor_id(obj: Any, fallback_index: int) -> int:
-    for field_name in ("actor_id", "agent_id", "id", "object_id"):
-        if hasattr(obj, field_name):
-            try:
-                return int(getattr(obj, field_name))
-            except TypeError, ValueError:
-                break
-    return fallback_index
-
-
-def object_kinematic(obj: Any) -> Any | None:
-    return getattr(obj, "kinematic", obj)
-
-
-def float_attr(obj: Any, name: str) -> float | None:
-    if obj is None or not hasattr(obj, name):
-        return None
-    value = getattr(obj, name)
-    if value is None:
-        return None
-    return float(value)
 
 
 def velocity_xy(kinematic: Any) -> tuple[float, float]:

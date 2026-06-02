@@ -580,6 +580,45 @@ condition:
     assert rows[0]["run.stop_condition"] == "invalid_cut_in_setup"
 
 
+def test_monitor_parameter_expression_uses_reset_params(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+
+stop_condition:
+  - type: parameter_expression
+    name: invalid_speed_gap
+    outcome: Invalid
+    expression: "abs(a_speed - b_speed)"
+    rule: le
+    value: 5
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1", params={"a_speed": 10, "b_speed": 7})
+
+    assert monitor.should_stop() is True
+    assert monitor.stop_condition_name == "invalid_speed_gap"
+    assert monitor.test_outcome == "invalid"
+
+    monitor.finalize(status="finished", reason=monitor.stop_reason)
+    rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
+
+    assert rows[0]["run.test_outcome"] == "invalid"
+    assert rows[0]["run.stop_condition"] == "invalid_speed_gap"
+
+
 def test_monitor_stop_reason_includes_av_should_quit_message(tmp_path: Path) -> None:
     config_path = write_config(
         tmp_path,

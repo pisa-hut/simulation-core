@@ -497,6 +497,7 @@ Built-in leaf conditions:
 | `collision` | `simcore/conditions/custom_conditions/collision.py` | Stop when simulator-reported collision matches optional actor filter. |
 | `reach_target_position` | `simcore/conditions/custom_conditions/reach_target_position.py` | Stop when an actor reaches a configured target position. |
 | `kinematic_threshold` | `simcore/conditions/custom_conditions/kinematic_threshold.py` | Stop when selected actor kinematic fields satisfy a numeric rule. |
+| `parameter_expression` | `simcore/conditions/custom_conditions/parameter_expression.py` | Stop when sampled parameters satisfy a numeric or boolean expression. |
 | `relative_position` | `simcore/conditions/custom_conditions/relative_position.py` | Stop when a target actor is in a selected relative direction from a source actor. |
 | `pair_ttc` | `simcore/conditions/custom_conditions/pair_ttc.py` | Stop when pair TTC falls below `threshold_s`. |
 
@@ -524,6 +525,44 @@ Stop condition 'low_ttc_ego_to_agent_1' triggered: TTC between actor 0 and actor
   rule: not_between
   values: [-2.0, 2.0]
 ```
+
+`parameter_expression` evaluates sampled parameters before simulator reset, so
+invalid parameter sets can be recorded without launching the concrete run. It
+uses the same numeric rule syntax as `kinematic_threshold`.
+
+For a single parameter range check:
+
+```yaml
+- type: parameter_expression
+  name: invalid_a_speed
+  outcome: Invalid
+  expression: a_speed
+  rule: not_between
+  values: [5.0, 15.0]
+```
+
+For cross-parameter constraints:
+
+```yaml
+- type: parameter_expression
+  name: invalid_speed_gap
+  outcome: Invalid
+  expression: "abs(a_speed - b_speed)"
+  rule: le
+  value: 5.0
+```
+
+For full boolean expressions:
+
+```yaml
+- type: parameter_expression
+  name: invalid_formula
+  outcome: Invalid
+  expression: "a * b + c >= d"
+```
+
+Allowed expression syntax is numeric constants, parameter names, `+ - * / % **`,
+comparisons, parentheses, and `abs()`, `min()`, `max()`, `round()`.
 
 `relative_position` uses the source actor's yaw as 0 degrees. Positive angles are
 counter-clockwise, so target on the source actor's left side has positive angle.

@@ -73,6 +73,11 @@ class Monitor:
         }
         self.current_sim_time_ms = 0.0
         self.current_wall_time_ms = 0.0
+        self.condition_context = {
+            "sps": sps,
+            "position_parser": position_parser,
+            "params": self.params,
+        }
 
         if not config_path:
             logger.warning("No monitor config_path provided; condition monitoring is disabled.")
@@ -90,10 +95,7 @@ class Monitor:
 
             self.root = build_condition_tree(
                 condition_cfg,
-                context={
-                    "sps": sps,
-                    "position_parser": position_parser,
-                },
+                context=self.condition_context,
             )
             logger.debug("Built condition tree: %s", self.root)
         elif not self.logging_enabled:
@@ -247,6 +249,7 @@ class Monitor:
         self.stop_condition_name = ""
         self.test_outcome = "unknown"
         self.params = dict(params or {})
+        self.condition_context["params"] = self.params
         self.wall_start_time_s = monotonic()
         self.overwrite_summary = overwrite_summary
 

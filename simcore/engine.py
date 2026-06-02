@@ -326,6 +326,14 @@ class SimulationEngine:
                 params=params,
                 overwrite_summary=self.overwrite,
             )
+            if self.monitor.should_stop():
+                stop_reason = self.monitor.stop_reason or "monitor_stop"
+                logger.info(f"Monitor requested to stop before simulator reset ({stop_reason})")
+                self.monitor.finalize(
+                    status="finished",
+                    reason=stop_reason,
+                )
+                return
 
             logger.debug("Resetting simulator...")
             runtime_frame = self.sim.reset(output_related, sps, params)

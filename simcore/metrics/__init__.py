@@ -1,4 +1,5 @@
 from .actors import find_actor, float_attr, iter_actor_states, object_actor_id, object_kinematic
+from .expressions import evaluate_numeric_expression
 from .relative_position import (
     RelativePositionResult,
     RelativePositionSelector,
@@ -13,6 +14,7 @@ __all__ = [
     "iter_actor_states",
     "object_actor_id",
     "object_kinematic",
+    "evaluate_numeric_expression",
     "NumericRule",
     "RelativePositionResult",
     "RelativePositionSelector",

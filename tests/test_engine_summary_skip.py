@@ -28,6 +28,9 @@ class FakeMonitor:
     def count_retryable_failures(self, output_related: str) -> int:
         return self.retryable_failures
 
+    def should_stop(self) -> bool:
+        return False
+
     def reset(self, output_related, params=None, overwrite_summary=False):
         self.reset_call = (output_related, params, overwrite_summary)
 
@@ -387,4 +390,31 @@ def test_run_concrete_records_keyboard_interrupt_and_reraises(tmp_path: Path) ->
 
     assert monitor.finalize_calls == [
         ("error", "KeyboardInterrupt: interrupted by user"),
+    ]
+
+
+def test_run_concrete_stops_before_sim_reset_when_monitor_precheck_triggers(
+    tmp_path: Path,
+) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    monitor = FakeMonitor(status=None)
+    monitor.stop_reason = "Stop condition 'invalid_params' triggered"
+
+    def should_stop():
+        return True
+
+    monitor.should_stop = should_stop
+    engine.monitor = monitor
+
+    def sim_reset(output_related, sps, params):
+        raise AssertionError("sim.reset should not be called")
+
+    engine.sim = SimpleNamespace(reset=sim_reset)
+    engine.av = SimpleNamespace()
+
+    engine.run_concrete("case_1", sps=None, params={"a": 1})
+
+    assert monitor.reset_call == ("case_1", {"a": 1}, False)
+    assert monitor.finalize_calls == [
+        ("finished", "Stop condition 'invalid_params' triggered"),
     ]

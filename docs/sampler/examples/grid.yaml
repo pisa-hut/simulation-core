@@ -1,6 +1,6 @@
 source:
   type: param_range
-  path: parameter_space.yaml
+  path: range.yaml
 
 # Optional engine-side cap. Remove or set to null to execute the full grid.
 max_samples: null

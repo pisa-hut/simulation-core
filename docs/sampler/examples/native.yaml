@@ -1,6 +1,6 @@
 source:
   type: openscenario
-  path: sample_param_distribution.xosc
+  path: param.xosc
 
 # Optional engine-side cap. Remove or set to null to execute every native sample.
 max_samples: null

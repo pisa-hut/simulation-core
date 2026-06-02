@@ -4,17 +4,21 @@ version = "0.3.0"
 description = "PISA simulation core - drives the simulation loop via gRPC"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = [
-    "pisa-api>=0.3.0",
-    "pyyaml>=6.0.3",
-    "rich>=15.0.0",
-]
+dependencies = ["pisa-api>=0.3.1", "pyyaml>=6.0.3", "rich>=15.0.0"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [tool.uv.sources]
 pisa-api = { git = "https://github.com/PISA-Hut/pisa-api.git" }
+
+[tool.setuptools.packages.find]
+include = ["simcore*"]
+exclude = ["specs*", "outputs*"]
 
 [tool.ruff]
 line-length = 100

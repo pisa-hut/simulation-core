@@ -86,6 +86,7 @@ class ParameterSpec:
 @dataclass(frozen=True)
 class ParameterSpace:
     parameters: tuple[ParameterSpec, ...]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_specs(cls, specs: list[ParameterSpec] | tuple[ParameterSpec, ...]) -> ParameterSpace:

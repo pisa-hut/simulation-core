@@ -6,6 +6,7 @@ import pytest
 
 from simcore.engine import SimulationEngine
 from simcore.execution import RetryHint, ScenarioExecutionError
+from simcore.sampler import Sample
 
 
 class FakeMonitor:
@@ -349,6 +350,55 @@ def test_run_logical_without_permutation_runs_all_iterations(tmp_path: Path) -> 
         ("iteration_2", {"speed": 20}),
         ("iteration_3", {"speed": 30}),
     ]
+
+
+def test_run_logical_uses_explicit_sample_ids_for_iteration_folders(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine.param_sampler = FakeSampler(
+        [
+            Sample(id="case_a", params={"speed": 10}),
+            Sample(id="case_b", params={"offset": -1.5, "behavior": "cutin"}),
+        ]
+    )
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = None
+    calls = []
+
+    def concrete_wrapper(output_related, sps, params=None):
+        calls.append((output_related, params))
+
+    engine.concrete_wrapper = concrete_wrapper
+
+    engine.run_logical()
+
+    assert calls == [
+        ("iteration_case_a", {"speed": 10}),
+        ("iteration_case_b", {"offset": -1.5, "behavior": "cutin"}),
+    ]
+
+
+def test_run_logical_permutation_uses_explicit_sample_id(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine.param_sampler = FakeSampler(
+        [
+            Sample(id="case_a", params={"speed": 10}),
+            Sample(id="case_b", params={"speed": 20}),
+        ]
+    )
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = 2
+    calls = []
+
+    def concrete_wrapper(output_related, sps, params=None):
+        calls.append((output_related, params))
+
+    engine.concrete_wrapper = concrete_wrapper
+
+    engine.run_logical()
+
+    assert calls == [("iteration_case_b", {"speed": 20})]
 
 
 def test_run_logical_rejects_out_of_range_permutation(tmp_path: Path) -> None:

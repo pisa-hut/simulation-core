@@ -1,0 +1,16 @@
+parameters:
+  - name: ego_speed
+    type: double
+    range: [8.0, 30.0]
+  - name: agent0_speed
+    type: double
+    range: [5.0, 25.0]
+  - name: cutin_offset
+    type: double
+    range: [-2.0, 2.0]
+  - name: lane_index
+    type: int
+    values: [1, 2, 3]
+  - name: behavior
+    type: categorical
+    values: [keep_lane, cut_in, brake]

@@ -1,0 +1,22 @@
+source:
+  type: param_range
+  path: parameter_space.yaml
+
+# Optional engine-side cap. Remove or set to null to execute the full grid.
+max_samples: null
+
+# Default discretization for continuous parameters that do not have per-parameter config.
+defaults:
+  n: 3
+
+parameters:
+  ego_speed:
+    values: [10.0, 15.0, 20.0, 25.0]
+  agent0_speed:
+    step: 5.0
+  cutin_offset:
+    n: 5
+  lane_index:
+    values: [1, 2]
+  behavior:
+    values: [cut_in, brake]

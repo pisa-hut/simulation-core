@@ -1,0 +1,9 @@
+source:
+  type: param_range
+  path: parameter_space.yaml
+
+# Optional engine-side cap. Useful when n_samples is large and only the first N should run.
+max_samples: null
+
+n_samples: 64
+skip: 1

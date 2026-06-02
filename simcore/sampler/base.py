@@ -18,7 +18,7 @@ class Sampler:
     def next(
         self,
         past_results: Iterable[TestResult] | None = None,
-    ) -> ParamDict | None:
+    ) -> ParamDict | Sample | None:
         raise NotImplementedError
 
     def total_samples(self) -> int | None:

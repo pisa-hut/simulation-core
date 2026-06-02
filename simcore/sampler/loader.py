@@ -7,12 +7,14 @@ from pathlib import Path
 from typing import Any
 
 from simcore.sampler.base import Sampler, TestResult
+from simcore.sampler.parsers.explicit_yaml import parse_explicit_sample_file
 from simcore.sampler.parsers.range_yaml import parse_parameter_range_file
 from simcore.sampler.parsers.xosc import parse_parameter_value_distribution
 from simcore.sampler.space import ParameterSpace
 from simcore.utils.util import get_cfg
 
 BUILTIN_SAMPLERS = {
+    "explicit": "simcore.sampler.explicit_sampler:ExplicitSampler",
     "grid": "simcore.sampler.grid_search_sampler:GridSearchSampler",
     "grid_search": "simcore.sampler.grid_search_sampler:GridSearchSampler",
     "lhs": "simcore.sampler.lhs_sampler:LHSSampler",
@@ -20,6 +22,89 @@ BUILTIN_SAMPLERS = {
     "openscenario_native": "simcore.sampler.openscenario_native_sampler:OpenScenarioNativeSampler",
     "sobol": "simcore.sampler.sobol_sampler:SobolSampler",
 }
+
+SAMPLER_CONTROL_KEYS = {
+    "_config_loaded",
+    "config_path",
+    "max_samples",
+    "method",
+    "source",
+}
+RUNTIME_SAMPLER_KEYS = {"method", "config_path"}
+
+
+def load_sampler_spec(sampler_spec: dict[str, Any] | None) -> dict[str, Any]:
+    """Load sampler config into one effective sampler specification.
+
+    Runner specs select only the sampler and config file:
+
+        {"method": "lhs", "config_path": "./sampler/lhs.yaml"}
+
+    The file referenced by ``config_path`` contains ``source``, ``max_samples``, and
+    method-specific constructor kwargs.
+    """
+    sampler_spec = dict(sampler_spec or {})
+    if sampler_spec.get("_config_loaded"):
+        return sampler_spec
+
+    if not sampler_spec:
+        return {"_config_loaded": True}
+
+    unknown_keys = set(sampler_spec) - RUNTIME_SAMPLER_KEYS
+    if unknown_keys:
+        keys = ", ".join(sorted(unknown_keys))
+        allowed = ", ".join(sorted(RUNTIME_SAMPLER_KEYS))
+        raise ValueError(f"sampler only supports key(s): {allowed}; got unsupported key(s): {keys}")
+
+    method = sampler_spec.get("method")
+    config_path = sampler_spec.get("config_path")
+    if not method:
+        raise ValueError("sampler.method is required when sampler is configured")
+    if not config_path:
+        raise ValueError("sampler.config_path is required when sampler is configured")
+    if method not in BUILTIN_SAMPLERS:
+        allowed = ", ".join(sorted(BUILTIN_SAMPLERS))
+        raise ValueError(f"Unknown sampler method {method!r}. Built-in methods: {allowed}")
+
+    resolved_config_path = Path(config_path).expanduser()
+    file_config = get_cfg(resolved_config_path) or {}
+    if not isinstance(file_config, dict):
+        raise ValueError(
+            f"Sampler config file {resolved_config_path} must contain a mapping/object"
+        )
+
+    effective = _normalize_config_relative_paths(file_config, resolved_config_path)
+    if "method" in effective:
+        raise ValueError("Sampler method must be defined in sampler.method, not config file")
+
+    effective["method"] = method
+    effective["config_path"] = str(resolved_config_path)
+    effective["_config_loaded"] = True
+    return effective
+
+
+def _normalize_config_relative_paths(
+    config: dict[str, Any],
+    config_path: Path,
+) -> dict[str, Any]:
+    config = dict(config)
+    source = config.get("source")
+    if isinstance(source, str):
+        config["source"] = str(_resolve_relative_to_config(source, config_path))
+    elif isinstance(source, dict):
+        source = dict(source)
+        source_path = source.get("path")
+        if source_path is not None:
+            source["path"] = str(_resolve_relative_to_config(source_path, config_path))
+        config["source"] = source
+    return config
+
+
+def _resolve_relative_to_config(path: str | Path, config_path: Path) -> Path:
+    path = Path(path).expanduser()
+    if path.is_absolute():
+        return path
+    return config_path.parent / path
 
 
 def import_from_path(module_path: str) -> type[Sampler]:
@@ -45,25 +130,29 @@ def infer_source_type(path: Path) -> str:
 
 def resolve_sampler_source(
     sampler_spec: dict[str, Any],
-    fallback_param_range_file: Path | None = None,
 ) -> tuple[Path, str] | tuple[None, None]:
-    source = sampler_spec.get("source") or {}
-    if isinstance(source, str):
-        source = {"path": source}
+    sampler_spec = load_sampler_spec(sampler_spec)
+    source = sampler_spec.get("source")
+    if source is None:
+        if sampler_spec.get("method"):
+            raise ValueError("Sampler config must define source.path")
+        return None, None
+    if not isinstance(source, dict):
+        raise ValueError("sampler config source must be a mapping/object")
 
     source_path = source.get("path")
     if source_path is not None:
         path = Path(source_path).expanduser()
-    elif fallback_param_range_file is not None:
-        path = fallback_param_range_file
     else:
-        return None, None
+        raise ValueError("Sampler config must define source.path")
 
     source_type = source.get("type") or infer_source_type(path)
     return path, source_type
 
 
 def load_parameter_space(source_path: Path, source_type: str = "openscenario") -> ParameterSpace:
+    if source_type in {"explicit", "sample_list", "samples"}:
+        return parse_explicit_sample_file(source_path)
     if source_type in {"openscenario", "xosc"}:
         return parse_parameter_value_distribution(source_path.read_text(encoding="utf-8"))
     if source_type in {"param_range", "yaml", "domain"}:
@@ -86,19 +175,22 @@ def create_sampler(
     parameter_space: ParameterSpace,
     past_results: Iterable[TestResult] | None = None,
 ) -> Sampler:
-    name = sampler_spec.get("method") or sampler_spec.get("name") or "native"
-    module_path = sampler_spec.get("module_path") or BUILTIN_SAMPLERS.get(name)
+    sampler_spec = load_sampler_spec(sampler_spec)
+    name = sampler_spec.get("method")
+    if not name:
+        raise ValueError("sampler.method is required")
+
+    module_path = BUILTIN_SAMPLERS.get(name)
     if module_path is None:
-        raise ValueError(f"Unknown sampler {name!r}; provide sampler.module_path")
+        allowed = ", ".join(sorted(BUILTIN_SAMPLERS))
+        raise ValueError(f"Unknown sampler method {name!r}. Built-in methods: {allowed}")
 
     sampler_class = import_from_path(module_path)
-    config_path = sampler_spec.get("config_path")
-    if config_path is not None:
-        config_path = Path(config_path).expanduser()
-        config = get_cfg(config_path) or {}
-    else:
-        config = {}
-    config.update(sampler_spec.get("config", {}))
+    config = {
+        key: value
+        for key, value in sampler_spec.items()
+        if key not in SAMPLER_CONTROL_KEYS
+    }
 
     kwargs = _constructor_kwargs(
         sampler_class,

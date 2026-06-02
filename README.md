@@ -183,29 +183,28 @@ The AV wrapper follows the same lifecycle as the simulator wrapper. On every loo
 
 ### `sampler`
 
-If the scenario directory contains a parameter range file named:
+When `sampler` is configured, the engine loads the sampler config file, creates the selected
+sampler, and runs all sampled concrete scenarios. OpenSCENARIO parameter files are treated as
+native sample definitions; their `stepWidth` or predefined sets are used as-is.
 
-```text
-<scenario_title>_param.xosc
-```
-
-the engine creates the configured sampler and runs all sampled concrete scenarios. OpenSCENARIO
-parameter files are treated as native sample definitions; their `stepWidth` or predefined sets are
-used as-is.
-
-Built-in sampler methods include OpenSCENARIO native sampling, grid search, Latin hypercube
-sampling, and Sobol sampling:
+Built-in sampler methods include explicit sample lists, OpenSCENARIO native sampling, grid search,
+Latin hypercube sampling, and Sobol sampling:
 
 ```json
 {
   "sampler": {
-    "method": "native"
+    "method": "native",
+    "config_path": "./sampler_config_examples/native.yaml"
   }
 }
 ```
 
-For LHS, Sobol, or domain-based grid search, use a separate YAML/JSON parameter range file that
-describes the parameter domain, not the sampling plan. See `sampler_params_example.yaml`:
+The runner spec should only select the sampler `method` and point at a sampler config file with
+`config_path`. The sampler config file contains the parameter source, optional engine iteration
+limit, and method-specific sampler settings. See `sampler_config_examples/` for complete examples.
+
+For LHS, Sobol, or domain-based grid search, the sampler config usually references a separate
+YAML/JSON parameter range file that describes the parameter domain, not the sampling plan:
 
 ```yaml
 parameters:
@@ -220,73 +219,134 @@ parameters:
     values: [cutin, brake]
 ```
 
+LHS runner spec:
+
 ```json
 {
   "sampler": {
-    "source": {
-      "type": "param_range",
-      "path": "./sampler_params.yaml"
-    },
     "method": "lhs",
-    "config": {
-      "n_samples": 50,
-      "seed": 42
-    }
+    "config_path": "./sampler_config_examples/lhs.yaml"
   }
 }
 ```
 
+`lhs.yaml`:
+
+```yaml
+source:
+  type: param_range
+  path: parameter_space.yaml
+max_samples: null
+n_samples: 50
+seed: 42
+```
+
+Sobol runner spec:
+
 ```json
 {
   "sampler": {
-    "source": {
-      "type": "param_range",
-      "path": "./sampler_params.yaml"
-    },
     "method": "sobol",
-    "config": {
-      "n_samples": 50,
-      "skip": 1
-    }
+    "config_path": "./sampler_config_examples/sobol.yaml"
   }
 }
 ```
 
-Domain-based grid search discretizes continuous ranges according to sampler config:
+`sobol.yaml`:
+
+```yaml
+source:
+  type: param_range
+  path: parameter_space.yaml
+max_samples: null
+n_samples: 50
+skip: 1
+```
+
+Domain-based grid search discretizes continuous ranges according to sampler config.
+Grid runner spec:
 
 ```json
 {
   "sampler": {
-    "source": {
-      "type": "param_range",
-      "path": "./sampler_params.yaml"
-    },
     "method": "grid",
-    "config": {
-      "defaults": {
-        "n": 5
-      },
-      "parameters": {
-        "offset": {
-          "step": 0.5
-        }
-      }
-    }
+    "config_path": "./sampler_config_examples/grid.yaml"
   }
 }
 ```
 
-Built-in samplers are selected by `method`; the previous `name` field is still accepted for
-compatibility. External samplers can still be loaded with
-`"module_path": "package.module:SamplerClass"` if they inherit from `simcore.sampler.Sampler`.
+`grid.yaml`:
 
-Samplers return one parameter dictionary per iteration. Finite samplers can expose
-`total_samples()` for progress reporting; adaptive samplers may return `None` when the total is
-not known ahead of time.
+```yaml
+source:
+  type: param_range
+  path: parameter_space.yaml
+max_samples: null
+defaults:
+  n: 5
+parameters:
+  offset:
+    step: 0.5
+```
 
-Sampler config can be provided inline with `sampler.config` or through a YAML/JSON file via
-`sampler.config_path`; inline config wins when both are present. LHS and Sobol default to at most
-16 samples when `n_samples` is omitted.
+Built-in samplers are selected by `method`.
+
+Explicit sample lists can be used when every concrete test case should be named and configured
+directly. The runner uses each sample id as the output suffix, so `id: cutin_fast` writes to
+`iteration_cutin_fast`:
+
+```json
+{
+  "sampler": {
+    "method": "explicit",
+    "config_path": "./sampler_config_examples/explicit.yaml"
+  }
+}
+```
+
+`explicit.yaml`:
+
+```yaml
+source:
+  type: explicit
+  path: explicit_samples.yaml
+max_samples: null
+```
+
+`explicit_samples.yaml`:
+
+```yaml
+samples:
+  - id: case_001
+    params:
+      ego_speed: 10.0
+      agent0_speed: 15.0
+      behavior: keep_lane
+
+  - id: cutin_fast
+    params:
+      ego_speed: 22.5
+      cutin_offset: -1.2
+      behavior: cut_in
+
+  - id: agent_brake
+    params:
+      agent0_speed: 8.0
+      behavior: brake
+```
+
+Each explicit sample must have a unique `id` and a `params` mapping. Samples do not need to modify
+the same parameter names.
+
+Samplers return one parameter dictionary or one named sample per iteration. Finite samplers can
+expose `total_samples()` for progress reporting; adaptive samplers may return `None` when the total
+is not known ahead of time.
+
+Sampler config must be provided through a YAML/JSON file via `sampler.config_path`. Runtime
+`sampler` only accepts `method` and `config_path`; put `source`, `max_samples`, and sampler
+constructor settings in the config file. Source paths inside sampler config files are resolved
+relative to the sampler config file. LHS and Sobol default to at most 16 samples when `n_samples`
+is omitted.
 
 To inspect sampler output without running a simulator:
 

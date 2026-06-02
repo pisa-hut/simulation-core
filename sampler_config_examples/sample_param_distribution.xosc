@@ -1,0 +1,18 @@
+<OpenSCENARIO>
+  <ParameterValueDistribution>
+    <Deterministic>
+      <DeterministicSingleParameterDistribution parameterName="ego_speed">
+        <DistributionSet>
+          <Element value="10.0" />
+          <Element value="15.0" />
+          <Element value="20.0" />
+        </DistributionSet>
+      </DeterministicSingleParameterDistribution>
+      <DeterministicSingleParameterDistribution parameterName="agent0_speed">
+        <DistributionRange stepWidth="5.0">
+          <Range lowerLimit="5.0" upperLimit="20.0" />
+        </DistributionRange>
+      </DeterministicSingleParameterDistribution>
+    </Deterministic>
+  </ParameterValueDistribution>
+</OpenSCENARIO>

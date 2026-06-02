@@ -9,8 +9,8 @@ from rich.logging import RichHandler
 from simcore.av_wrapper import AVWrapper
 from simcore.execution import ExecResult, RetryHint, ScenarioExecutionError
 from simcore.monitor import Monitor
-from simcore.sampler import create_sampler, load_parameter_space
-from simcore.sampler.loader import resolve_sampler_source
+from simcore.sampler import Sample, create_sampler, load_parameter_space
+from simcore.sampler.loader import load_sampler_spec, resolve_sampler_source
 from simcore.sim_wrapper import SimWrapper
 from simcore.utils.position_parser import PositionParser
 from simcore.utils.sps import ScenarioPack
@@ -24,13 +24,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _sample_output_and_params(raw_sample: Sample | dict[str, Any], index: int) -> tuple[str, dict]:
+    if isinstance(raw_sample, Sample):
+        sample_id = raw_sample.id if raw_sample.id is not None else str(index)
+        return f"iteration_{sample_id}", dict(raw_sample.params)
+    if isinstance(raw_sample, dict):
+        return f"iteration_{index}", raw_sample
+    raise TypeError(f"Sampler returned unsupported sample type: {type(raw_sample).__name__}")
+
+
 class SimulationEngine:
     def __init__(self, spec: dict[str, Any]):
         runtime_spec = spec.get("runtime", {})
         task_spec = spec.get("task", {})
         sim_spec = spec.get("simulator", {})
         av_spec = spec.get("av", {})
-        sampler_spec = spec.get("sampler", {})
+        sampler_spec = load_sampler_spec(spec.get("sampler", {}))
         scenario_spec = spec.get("scenario", {})
         monitor_spec = spec.get("monitor", {})
         map_spec = spec.get("map", {})
@@ -111,10 +120,7 @@ class SimulationEngine:
             job_id=self.job_id,
         )
 
-        sampler_source_path, sampler_source_type = resolve_sampler_source(
-            sampler_spec,
-            fallback_param_range_file=self.sps.param_range_file,
-        )
+        sampler_source_path, sampler_source_type = resolve_sampler_source(sampler_spec)
         if sampler_source_path is not None:
             logger.debug(
                 "Sampler source provided: %s (%s)", sampler_source_path, sampler_source_type
@@ -198,11 +204,12 @@ class SimulationEngine:
         i = 0
         while self.max_sampler_iterations is None or i < self.max_sampler_iterations:
             progress_total = total if total is not None else "unknown"
-            params = self.param_sampler.next()
+            raw_sample = self.param_sampler.next()
 
-            if params is None:
+            if raw_sample is None:
                 logger.debug("Parameter sampling completed.")
                 break
+            output_related, params = _sample_output_and_params(raw_sample, i + 1)
 
             logger.info(
                 f"====================== Sampling iteration {i + 1}/{progress_total} ======================"
@@ -211,7 +218,7 @@ class SimulationEngine:
             logger.info(f"Sampled parameters: {json.dumps(params)}")
 
             try:
-                self.concrete_wrapper(f"iteration_{i + 1}", self.sps, params)
+                self.concrete_wrapper(output_related, self.sps, params)
             except ScenarioExecutionError as e:
                 if e.skip_concrete:
                     logger.warning(
@@ -237,13 +244,14 @@ class SimulationEngine:
             )
 
         logger.info("Running only permutation %s/%s", permutation, total or "unknown")
-        params = None
+        raw_sample = None
         for index in range(1, permutation + 1):
-            params = self.param_sampler.next()
-            if params is None:
+            raw_sample = self.param_sampler.next()
+            if raw_sample is None:
                 raise ValueError(
                     f"runtime.permutation={permutation} is out of range; sampler ended at {index - 1}"
                 )
+        output_related, params = _sample_output_and_params(raw_sample, permutation)
 
         logger.info(
             "====================== Sampling iteration %s/%s ======================",
@@ -251,7 +259,7 @@ class SimulationEngine:
             total or "unknown",
         )
         logger.info(f"Sampled parameters: {json.dumps(params)}")
-        self.concrete_wrapper(f"iteration_{permutation}", self.sps, params)
+        self.concrete_wrapper(output_related, self.sps, params)
 
     def concrete_wrapper(
         self,

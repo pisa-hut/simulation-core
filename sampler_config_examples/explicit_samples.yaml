@@ -1,0 +1,17 @@
+samples:
+  - id: case_001
+    params:
+      ego_speed: 10.0
+      agent0_speed: 15.0
+      behavior: keep_lane
+
+  - id: cutin_fast
+    params:
+      ego_speed: 22.5
+      cutin_offset: -1.2
+      behavior: cut_in
+
+  - id: agent_brake
+    params:
+      agent0_speed: 8.0
+      behavior: brake

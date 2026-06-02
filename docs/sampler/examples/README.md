@@ -5,16 +5,16 @@ Runner specs can keep sampler selection small:
 ```json
 {
   "sampler": {
-    "method": "lhs",
+    "name": "lhs",
     "config_path": "./docs/sampler/examples/lhs.yaml"
   }
 }
 ```
 
 The config file contains the sampler source, optional engine iteration limit, and the
-method-specific sampler settings.
+sampler-specific settings.
 
-## Implemented Methods
+## Implemented Sampler Names
 
 - `native` / `openscenario_native`: uses OpenSCENARIO parameter distributions as-is.
 - `explicit`: runs the exact listed sample ids and parameter changes from a YAML/JSON file.
@@ -30,7 +30,7 @@ method-specific sampler settings.
   sampler config file.
 - `max_samples`: optional engine-side cap on how many samples to execute.
 
-## Method-Specific Fields
+## Sampler-Specific Fields
 
 `grid` / `grid_search`:
 
@@ -52,12 +52,12 @@ method-specific sampler settings.
 
 `native` / `openscenario_native`:
 
-- No required method-specific fields. The OpenSCENARIO parameter distribution defines
+- No required sampler-specific fields. The OpenSCENARIO parameter distribution defines
   the concrete values.
 
 `explicit`:
 
-- No required method-specific fields. The `source.path` file must contain a `samples` list.
+- No required sampler-specific fields. The `source.path` file must contain a `samples` list.
 - Each sample must have a unique `id` and a `params` mapping.
 - Output folders are named `iteration_<id>`.
 - Each sample can modify a different set of parameters.

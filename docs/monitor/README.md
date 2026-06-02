@@ -6,14 +6,19 @@
 
 ```json
 {
-  "monitor": {
-    "logging_config_path": "./docs/monitor/examples/logging_config_example.yaml",
+  "scenario": {
     "stop_condition_config_path": "./docs/monitor/examples/stop_condition_config_example.yaml"
+  },
+  "monitor": {
+    "config_path": "./docs/monitor/examples/logging_config_example.yaml"
   }
 }
 ```
 
 The current engine instantiates `simcore.monitor.Monitor` directly.
+
+`monitor.config_path` points to reusable logging config. `scenario.stop_condition_config_path`
+points to scenario-specific stop logic.
 
 ## Config Shape
 

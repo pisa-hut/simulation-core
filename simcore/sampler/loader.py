@@ -27,10 +27,10 @@ SAMPLER_CONTROL_KEYS = {
     "_config_loaded",
     "config_path",
     "max_samples",
-    "method",
+    "name",
     "source",
 }
-RUNTIME_SAMPLER_KEYS = {"method", "config_path"}
+RUNTIME_SAMPLER_KEYS = {"name", "config_path"}
 
 
 def load_sampler_spec(sampler_spec: dict[str, Any] | None) -> dict[str, Any]:
@@ -38,10 +38,10 @@ def load_sampler_spec(sampler_spec: dict[str, Any] | None) -> dict[str, Any]:
 
     Runner specs select only the sampler and config file:
 
-        {"method": "lhs", "config_path": "./sampler/lhs.yaml"}
+        {"name": "lhs", "config_path": "./sampler/lhs.yaml"}
 
     The file referenced by ``config_path`` contains ``source``, ``max_samples``, and
-    method-specific constructor kwargs.
+    sampler-specific constructor kwargs.
     """
     sampler_spec = dict(sampler_spec or {})
     if sampler_spec.get("_config_loaded"):
@@ -56,15 +56,15 @@ def load_sampler_spec(sampler_spec: dict[str, Any] | None) -> dict[str, Any]:
         allowed = ", ".join(sorted(RUNTIME_SAMPLER_KEYS))
         raise ValueError(f"sampler only supports key(s): {allowed}; got unsupported key(s): {keys}")
 
-    method = sampler_spec.get("method")
+    name = sampler_spec.get("name")
     config_path = sampler_spec.get("config_path")
-    if not method:
-        raise ValueError("sampler.method is required when sampler is configured")
+    if not name:
+        raise ValueError("sampler.name is required when sampler is configured")
     if not config_path:
         raise ValueError("sampler.config_path is required when sampler is configured")
-    if method not in BUILTIN_SAMPLERS:
+    if name not in BUILTIN_SAMPLERS:
         allowed = ", ".join(sorted(BUILTIN_SAMPLERS))
-        raise ValueError(f"Unknown sampler method {method!r}. Built-in methods: {allowed}")
+        raise ValueError(f"Unknown sampler name {name!r}. Built-in samplers: {allowed}")
 
     resolved_config_path = Path(config_path).expanduser()
     file_config = get_cfg(resolved_config_path) or {}
@@ -74,10 +74,12 @@ def load_sampler_spec(sampler_spec: dict[str, Any] | None) -> dict[str, Any]:
         )
 
     effective = _normalize_config_relative_paths(file_config, resolved_config_path)
+    if "name" in effective:
+        raise ValueError("Sampler name must be defined in sampler.name, not config file")
     if "method" in effective:
-        raise ValueError("Sampler method must be defined in sampler.method, not config file")
+        raise ValueError("Sampler config must not contain method; use sampler.name")
 
-    effective["method"] = method
+    effective["name"] = name
     effective["config_path"] = str(resolved_config_path)
     effective["_config_loaded"] = True
     return effective
@@ -134,7 +136,7 @@ def resolve_sampler_source(
     sampler_spec = load_sampler_spec(sampler_spec)
     source = sampler_spec.get("source")
     if source is None:
-        if sampler_spec.get("method"):
+        if sampler_spec.get("name"):
             raise ValueError("Sampler config must define source.path")
         return None, None
     if not isinstance(source, dict):
@@ -176,14 +178,14 @@ def create_sampler(
     past_results: Iterable[TestResult] | None = None,
 ) -> Sampler:
     sampler_spec = load_sampler_spec(sampler_spec)
-    name = sampler_spec.get("method")
+    name = sampler_spec.get("name")
     if not name:
-        raise ValueError("sampler.method is required")
+        raise ValueError("sampler.name is required")
 
     module_path = BUILTIN_SAMPLERS.get(name)
     if module_path is None:
         allowed = ", ".join(sorted(BUILTIN_SAMPLERS))
-        raise ValueError(f"Unknown sampler method {name!r}. Built-in methods: {allowed}")
+        raise ValueError(f"Unknown sampler name {name!r}. Built-in samplers: {allowed}")
 
     sampler_class = import_from_path(module_path)
     config = {

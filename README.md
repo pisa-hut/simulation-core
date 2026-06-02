@@ -45,7 +45,7 @@ A runner spec configures runtime settings, output paths, simulator and AV endpoi
 - [Docs Overview](docs/README.md)
 - [Engine](docs/engine/): runner spec, lifecycle, output layout, retry/skip behavior.
 - [AV and Simulator Wrappers](docs/wrappers/): gRPC lifecycle and wrapper config.
-- [Sampler](docs/sampler/): sampler config format, implemented sampler methods, examples.
+- [Sampler](docs/sampler/): sampler config format, implemented sampler names, examples.
 - [Monitor](docs/monitor/): stop conditions, logging pipelines, result status fields, extension notes.
 
 ## Repository Layout

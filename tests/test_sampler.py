@@ -39,8 +39,8 @@ PVD_XML = """\
 """
 
 
-def _effective_sampler_spec(method: str, **config):
-    return {"_config_loaded": True, "method": method, **config}
+def _effective_sampler_spec(name: str, **config):
+    return {"_config_loaded": True, "name": name, **config}
 
 
 def _params(sample: Sample | None):
@@ -367,7 +367,7 @@ def test_create_sampler_merges_config_path(tmp_path: Path) -> None:
     config_path.write_text("n_samples: 2\nseed: 1\n", encoding="utf-8")
     space = ParameterSpace.from_specs([ParameterSpec("speed", (10.0, 20.0, 30.0))])
 
-    sampler = create_sampler({"method": "lhs", "config_path": str(config_path)}, space)
+    sampler = create_sampler({"name": "lhs", "config_path": str(config_path)}, space)
 
     assert sampler.total_samples() == 2
 
@@ -395,7 +395,7 @@ max_samples: 2
 """,
         encoding="utf-8",
     )
-    runtime_spec = {"method": "lhs", "config_path": str(config_path)}
+    runtime_spec = {"name": "lhs", "config_path": str(config_path)}
 
     effective_spec = load_sampler_spec(runtime_spec)
     source_path, source_type = resolve_sampler_source(effective_spec)
@@ -416,32 +416,40 @@ def test_runtime_sampler_spec_rejects_inline_config(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="unsupported key"):
         load_sampler_spec(
             {
-                "method": "lhs",
+                "name": "lhs",
                 "config_path": str(config_path),
                 "config": {"n_samples": 4},
             }
         )
 
 
-def test_runtime_sampler_spec_rejects_name_alias(tmp_path: Path) -> None:
+def test_runtime_sampler_spec_rejects_method_alias(tmp_path: Path) -> None:
     config_path = tmp_path / "sampler.yaml"
     config_path.write_text("n_samples: 2\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="unsupported key"):
-        load_sampler_spec({"name": "lhs", "config_path": str(config_path)})
+        load_sampler_spec({"method": "lhs", "config_path": str(config_path)})
 
 
 def test_runtime_sampler_spec_requires_config_path() -> None:
     with pytest.raises(ValueError, match="config_path"):
-        load_sampler_spec({"method": "lhs"})
+        load_sampler_spec({"name": "lhs"})
+
+
+def test_sampler_config_rejects_sampler_name_in_config_file(tmp_path: Path) -> None:
+    config_path = tmp_path / "sampler.yaml"
+    config_path.write_text("name: sobol\nn_samples: 2\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="sampler.name"):
+        load_sampler_spec({"name": "lhs", "config_path": str(config_path)})
 
 
 def test_sampler_config_rejects_method_in_config_file(tmp_path: Path) -> None:
     config_path = tmp_path / "sampler.yaml"
     config_path.write_text("method: sobol\nn_samples: 2\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="sampler.method"):
-        load_sampler_spec({"method": "lhs", "config_path": str(config_path)})
+    with pytest.raises(ValueError, match="must not contain method"):
+        load_sampler_spec({"name": "lhs", "config_path": str(config_path)})
 
 
 def test_import_from_path_validates_sampler_api() -> None:

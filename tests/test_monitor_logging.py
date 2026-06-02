@@ -110,7 +110,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -173,7 +173,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -217,7 +217,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -276,7 +276,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -327,7 +327,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -361,7 +361,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -390,7 +390,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeEndpoint(),
@@ -490,7 +490,7 @@ timeout_ms: 1
 
 
 def test_monitor_rejects_stop_condition_in_logging_config(tmp_path: Path) -> None:
-    logging_config_path = write_config(
+    config_path = write_config(
         tmp_path,
         """
 logging:
@@ -503,7 +503,7 @@ condition:
 
     try:
         Monitor(
-            logging_config_path=str(logging_config_path),
+            config_path=str(config_path),
             log_file=str(tmp_path / "outputs" / "monitor_log.csv"),
             av=FakeEndpoint(),
             sim=FakeEndpoint(),
@@ -515,7 +515,7 @@ condition:
 
 
 def test_monitor_rejects_logging_config_without_logging_key(tmp_path: Path) -> None:
-    logging_config_path = write_config(
+    config_path = write_config(
         tmp_path,
         """
 frame:
@@ -525,7 +525,7 @@ frame:
 
     try:
         Monitor(
-            logging_config_path=str(logging_config_path),
+            config_path=str(config_path),
             log_file=str(tmp_path / "outputs" / "monitor_log.csv"),
             av=FakeEndpoint(),
             sim=FakeEndpoint(),
@@ -564,7 +564,7 @@ stop_condition:
 def test_monitor_condition_list_defaults_to_or_and_records_test_outcome(
     tmp_path: Path,
 ) -> None:
-    logging_config_path = write_config(
+    config_path = write_config(
         tmp_path,
         """
 logging:
@@ -589,7 +589,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(logging_config_path),
+        config_path=str(config_path),
         stop_condition_config_path=str(stop_condition_config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
@@ -615,7 +615,7 @@ logging:
 def test_monitor_records_outcome_from_top_level_compound_condition(
     tmp_path: Path,
 ) -> None:
-    logging_config_path = write_config(
+    config_path = write_config(
         tmp_path,
         """
 logging:
@@ -643,7 +643,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(logging_config_path),
+        config_path=str(config_path),
         stop_condition_config_path=str(stop_condition_config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
@@ -665,7 +665,7 @@ logging:
 
 
 def test_monitor_parameter_expression_uses_reset_params(tmp_path: Path) -> None:
-    logging_config_path = write_config(
+    config_path = write_config(
         tmp_path,
         """
 logging:
@@ -689,7 +689,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(logging_config_path),
+        config_path=str(config_path),
         stop_condition_config_path=str(stop_condition_config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
@@ -721,7 +721,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeShouldQuitEndpoint(should_quit=True, message="route complete"),
         sim=FakeEndpoint(),
@@ -747,7 +747,7 @@ logging:
     av = FakeShouldQuitEndpoint(should_quit=True, message="route complete")
     sim = FakeShouldQuitEndpoint(should_quit=True, message="simulation complete")
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=av,
         sim=sim,
@@ -773,7 +773,7 @@ logging:
     )
     output_base = tmp_path / "outputs"
     monitor = Monitor(
-        logging_config_path=str(config_path),
+        config_path=str(config_path),
         log_file=str(output_base / "monitor_log.csv"),
         av=FakeEndpoint(),
         sim=FakeShouldQuitEndpoint(should_quit=True, message="simulation complete"),

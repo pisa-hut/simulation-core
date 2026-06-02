@@ -1,13 +1,13 @@
 # Sampler
 
-Samplers create concrete parameter sets for logical scenarios. Runtime specs only select the sampler method and point to a sampler config file.
+Samplers create concrete parameter sets for logical scenarios. Runtime specs only select the sampler name and point to a sampler config file.
 
 ## Runtime Spec
 
 ```json
 {
   "sampler": {
-    "method": "lhs",
+    "name": "lhs",
     "config_path": "./docs/sampler/examples/lhs.yaml"
   }
 }
@@ -17,7 +17,7 @@ If `sampler` is omitted or `{}`, the engine runs one concrete scenario without s
 
 Runtime `sampler` only accepts:
 
-- `method`
+- `name`
 - `config_path`
 
 Put `source`, `max_samples`, and sampler-specific settings in the sampler config file.
@@ -59,7 +59,7 @@ When `Sample.id` is set, output folders use:
 iteration_<id>/
 ```
 
-## Implemented Methods
+## Implemented Sampler Names
 
 - `native` / `openscenario_native`: uses OpenSCENARIO parameter distributions as-is.
 - `explicit`: runs exact listed sample ids and parameter changes.
@@ -111,7 +111,7 @@ Use when every concrete test case should be named and configured directly:
 ```json
 {
   "sampler": {
-    "method": "explicit",
+    "name": "explicit",
     "config_path": "./docs/sampler/examples/explicit.yaml"
   }
 }

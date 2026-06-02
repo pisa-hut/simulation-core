@@ -31,7 +31,7 @@ class Monitor:
         log_file: str,
         av: AVWrapper,
         sim: SimWrapper,
-        logging_config_path: str | None = None,
+        config_path: str | None = None,
         stop_condition_config_path: str | None = None,
         sps=None,
         position_parser=None,
@@ -81,8 +81,8 @@ class Monitor:
             "params": self.params,
         }
 
-        if logging_config_path:
-            self.logging_cfg = self._load_mapping_config(logging_config_path, "monitor logging")
+        if config_path:
+            self.logging_cfg = self._load_mapping_config(config_path, "monitor logging")
             if "logging" not in self.logging_cfg:
                 raise ValueError("Monitor logging config must contain 'logging'")
             if any(
@@ -91,7 +91,7 @@ class Monitor:
             ):
                 raise ValueError(
                     "Monitor logging config must not contain stop condition fields; "
-                    "use monitor.stop_condition_config_path"
+                    "use scenario.stop_condition_config_path"
                 )
             self._configure_logging()
 
@@ -100,7 +100,7 @@ class Monitor:
             if isinstance(self.stop_condition_cfg, dict) and "logging" in self.stop_condition_cfg:
                 raise ValueError(
                     "Monitor stop condition config must not contain logging; "
-                    "use monitor.logging_config_path"
+                    "use monitor.config_path"
                 )
 
         condition_cfg = self._stop_condition_config()
@@ -117,7 +117,7 @@ class Monitor:
             logger.debug("Built condition tree: %s", self.root)
         elif not self.logging_enabled:
             logger.warning(
-                "No monitor logging_config_path or stop_condition_config_path provided; "
+                "No monitor config_path or scenario.stop_condition_config_path provided; "
                 "monitoring is disabled."
             )
 

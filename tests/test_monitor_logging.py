@@ -15,8 +15,10 @@ class FakeEndpoint:
 class FakeShouldQuitEndpoint:
     def __init__(self, *, should_quit: bool, message: str = "") -> None:
         self.result = ShouldQuitResult(should_quit, message)
+        self.calls = 0
 
     def should_quit(self) -> ShouldQuitResult:
+        self.calls += 1
         return self.result
 
 
@@ -641,6 +643,34 @@ logging:
 
     assert monitor.should_stop() is True
     assert monitor.stop_reason == "AV requested to stop: route complete"
+
+
+def test_monitor_can_skip_external_should_quit_check(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+""",
+    )
+    output_base = tmp_path / "outputs"
+    av = FakeShouldQuitEndpoint(should_quit=True, message="route complete")
+    sim = FakeShouldQuitEndpoint(should_quit=True, message="simulation complete")
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=av,
+        sim=sim,
+    )
+
+    monitor.reset("case_1")
+
+    assert monitor.should_stop(check_external_quit=False) is False
+    assert monitor.stop_reason == ""
+    assert av.calls == 0
+    assert sim.calls == 0
 
 
 def test_monitor_stop_reason_includes_sim_should_quit_message(tmp_path: Path) -> None:

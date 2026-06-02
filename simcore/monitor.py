@@ -203,7 +203,7 @@ class Monitor:
 
         self.step_index += 1
 
-    def should_stop(self) -> bool:
+    def should_stop(self, check_external_quit: bool = True) -> bool:
         if self.root:
             result = self.root.evaluate()
             if result.code == ConditionCode.TRIGGERED:
@@ -216,6 +216,9 @@ class Monitor:
                     self.stop_reason,
                 )
                 return True
+        if not check_external_quit:
+            return False
+
         av_should_quit = self.av.should_quit()
         if av_should_quit:
             self.stop_condition_name = "av_should_quit"

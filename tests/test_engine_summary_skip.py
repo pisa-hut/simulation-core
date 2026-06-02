@@ -29,7 +29,7 @@ class FakeMonitor:
     def count_retryable_failures(self, output_related: str) -> int:
         return self.retryable_failures
 
-    def should_stop(self) -> bool:
+    def should_stop(self, check_external_quit: bool = True) -> bool:
         return False
 
     def reset(self, output_related, params=None, overwrite_summary=False):
@@ -453,7 +453,8 @@ def test_run_concrete_stops_before_sim_reset_when_monitor_precheck_triggers(
     monitor = FakeMonitor(status=None)
     monitor.stop_reason = "Stop condition 'invalid_params' triggered"
 
-    def should_stop():
+    def should_stop(check_external_quit=True):
+        assert check_external_quit is False
         return True
 
     monitor.should_stop = should_stop

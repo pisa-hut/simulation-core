@@ -330,7 +330,7 @@ class SimulationEngine:
                 params=params,
                 overwrite_summary=self.overwrite,
             )
-            if self.monitor.should_stop():
+            if self.monitor.should_stop(check_external_quit=False):
                 stop_reason = self.monitor.stop_reason or "monitor_stop"
                 logger.info(f"Monitor requested to stop before simulator reset ({stop_reason})")
                 self.monitor.finalize(

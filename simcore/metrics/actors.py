@@ -21,7 +21,7 @@ def object_actor_id(obj: Any, fallback_index: int) -> int:
         if hasattr(obj, field_name):
             try:
                 return int(getattr(obj, field_name))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 break
     return fallback_index
 
@@ -38,5 +38,5 @@ def float_attr(obj: Any, name: str) -> float | None:
         return None
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None

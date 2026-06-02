@@ -137,8 +137,7 @@ class KinematicThresholdCondition(ConditionNode):
             )
 
         values = ", ".join(
-            f"actor {actor_id}: {self.metric}={value:.6g}"
-            for actor_id, value in latest_values[-5:]
+            f"actor {actor_id}: {self.metric}={value:.6g}" for actor_id, value in latest_values[-5:]
         )
         return (
             f"No matching actor satisfied kinematic.{self.metric} rule {self.rule.describe()}; "

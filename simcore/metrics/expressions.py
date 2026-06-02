@@ -64,7 +64,10 @@ def _eval_node(node: ast.AST, variables: dict[str, Any]):
         op = BIN_OPS.get(type(node.op))
         if op is None:
             raise ValueError(f"Unsupported expression operator: {type(node.op).__name__}")
-        return op(_as_float(_eval_node(node.left, variables)), _as_float(_eval_node(node.right, variables)))
+        return op(
+            _as_float(_eval_node(node.left, variables)),
+            _as_float(_eval_node(node.right, variables)),
+        )
 
     if isinstance(node, ast.UnaryOp):
         op = UNARY_OPS.get(type(node.op))

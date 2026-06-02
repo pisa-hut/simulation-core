@@ -29,14 +29,28 @@ def _sample_output_and_params(sample: Sample, index: int) -> tuple[str, dict]:
     return f"iteration_{sample_id}", dict(sample.params)
 
 
+def _scenario_source_base_path(scenario_path: str | Path | None) -> Path | None:
+    if scenario_path is None:
+        return None
+    path = Path(scenario_path).expanduser()
+    if path.exists():
+        return path if path.is_dir() else path.parent
+    if path.suffix:
+        return path.parent
+    return path
+
+
 class SimulationEngine:
     def __init__(self, spec: dict[str, Any]):
         runtime_spec = spec.get("runtime", {})
         task_spec = spec.get("task", {})
         sim_spec = spec.get("simulator", {})
         av_spec = spec.get("av", {})
-        sampler_spec = load_sampler_spec(spec.get("sampler", {}))
         scenario_spec = spec.get("scenario", {})
+        sampler_spec = load_sampler_spec(
+            spec.get("sampler", {}),
+            source_base_path=_scenario_source_base_path(scenario_spec.get("scenario_path")),
+        )
         monitor_spec = spec.get("monitor", {})
         map_spec = spec.get("map", {})
 

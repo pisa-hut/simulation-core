@@ -26,8 +26,9 @@ sampler-specific settings.
 
 - `source.type`: `openscenario`/`xosc` for OpenSCENARIO parameter files, or
   `param_range`/`yaml`/`domain` for YAML/JSON parameter-domain files.
-- `source.path`: parameter source file path. Relative paths are resolved relative to the
-  sampler config file.
+- `source.path`: parameter source file path. In engine runs, relative paths are resolved
+  relative to the folder from `scenario.scenario_path`. Standalone sampler utilities
+  resolve them relative to the sampler config file when no scenario base is provided.
 - `max_samples`: optional engine-side cap on how many samples to execute.
 
 ## Sampler-Specific Fields

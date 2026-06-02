@@ -33,7 +33,10 @@ SAMPLER_CONTROL_KEYS = {
 RUNTIME_SAMPLER_KEYS = {"name", "config_path"}
 
 
-def load_sampler_spec(sampler_spec: dict[str, Any] | None) -> dict[str, Any]:
+def load_sampler_spec(
+    sampler_spec: dict[str, Any] | None,
+    source_base_path: str | Path | None = None,
+) -> dict[str, Any]:
     """Load sampler config into one effective sampler specification.
 
     Runner specs select only the sampler and config file:
@@ -41,7 +44,9 @@ def load_sampler_spec(sampler_spec: dict[str, Any] | None) -> dict[str, Any]:
         {"name": "lhs", "config_path": "./sampler/lhs.yaml"}
 
     The file referenced by ``config_path`` contains ``source``, ``max_samples``, and
-    sampler-specific constructor kwargs.
+    sampler-specific constructor kwargs. Relative ``source.path`` values are resolved
+    against ``source_base_path`` when provided; otherwise they are resolved relative
+    to the sampler config file for standalone sampler use.
     """
     sampler_spec = dict(sampler_spec or {})
     if sampler_spec.get("_config_loaded"):
@@ -73,7 +78,11 @@ def load_sampler_spec(sampler_spec: dict[str, Any] | None) -> dict[str, Any]:
             f"Sampler config file {resolved_config_path} must contain a mapping/object"
         )
 
-    effective = _normalize_config_relative_paths(file_config, resolved_config_path)
+    effective = _normalize_config_relative_paths(
+        file_config,
+        resolved_config_path,
+        source_base_path=source_base_path,
+    )
     if "name" in effective:
         raise ValueError("Sampler name must be defined in sampler.name, not config file")
     if "method" in effective:
@@ -88,25 +97,29 @@ def load_sampler_spec(sampler_spec: dict[str, Any] | None) -> dict[str, Any]:
 def _normalize_config_relative_paths(
     config: dict[str, Any],
     config_path: Path,
+    source_base_path: str | Path | None = None,
 ) -> dict[str, Any]:
     config = dict(config)
+    base_path = (
+        Path(source_base_path).expanduser() if source_base_path is not None else config_path.parent
+    )
     source = config.get("source")
     if isinstance(source, str):
-        config["source"] = str(_resolve_relative_to_config(source, config_path))
+        config["source"] = str(_resolve_relative_path(source, base_path))
     elif isinstance(source, dict):
         source = dict(source)
         source_path = source.get("path")
         if source_path is not None:
-            source["path"] = str(_resolve_relative_to_config(source_path, config_path))
+            source["path"] = str(_resolve_relative_path(source_path, base_path))
         config["source"] = source
     return config
 
 
-def _resolve_relative_to_config(path: str | Path, config_path: Path) -> Path:
+def _resolve_relative_path(path: str | Path, base_path: Path) -> Path:
     path = Path(path).expanduser()
     if path.is_absolute():
         return path
-    return config_path.parent / path
+    return base_path / path
 
 
 def import_from_path(module_path: str) -> type[Sampler]:
@@ -188,11 +201,7 @@ def create_sampler(
         raise ValueError(f"Unknown sampler name {name!r}. Built-in samplers: {allowed}")
 
     sampler_class = import_from_path(module_path)
-    config = {
-        key: value
-        for key, value in sampler_spec.items()
-        if key not in SAMPLER_CONTROL_KEYS
-    }
+    config = {key: value for key, value in sampler_spec.items() if key not in SAMPLER_CONTROL_KEYS}
 
     kwargs = _constructor_kwargs(
         sampler_class,

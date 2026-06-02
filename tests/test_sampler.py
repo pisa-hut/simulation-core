@@ -409,6 +409,42 @@ max_samples: 2
     assert sampler.total_samples() == 3
 
 
+def test_sampler_source_path_resolves_relative_to_scenario_folder(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+    config_dir = tmp_path / "config"
+    scenario_dir.mkdir()
+    config_dir.mkdir()
+    params_path = scenario_dir / "params.yaml"
+    params_path.write_text(
+        """
+parameters:
+  - name: speed
+    type: double
+    range: [10.0, 20.0]
+""",
+        encoding="utf-8",
+    )
+    config_path = config_dir / "sampler.yaml"
+    config_path.write_text(
+        """
+source:
+  type: param_range
+  path: params.yaml
+n_samples: 3
+""",
+        encoding="utf-8",
+    )
+
+    effective_spec = load_sampler_spec(
+        {"name": "lhs", "config_path": str(config_path)},
+        source_base_path=scenario_dir,
+    )
+    source_path, source_type = resolve_sampler_source(effective_spec)
+
+    assert source_path == params_path
+    assert source_type == "param_range"
+
+
 def test_runtime_sampler_spec_rejects_inline_config(tmp_path: Path) -> None:
     config_path = tmp_path / "sampler.yaml"
     config_path.write_text("n_samples: 2\nseed: 1\n", encoding="utf-8")

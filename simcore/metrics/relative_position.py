@@ -46,12 +46,9 @@ class RelativePositionSelector:
     labels: tuple[str, ...] = ()
 
     def matches(self, result: RelativePositionResult) -> bool:
-        return (
-            result.sector in self.sectors
-            or any(
-                angle_in_range(result.relative_angle_deg, start_deg, end_deg)
-                for start_deg, end_deg in self.angle_ranges_deg
-            )
+        return result.sector in self.sectors or any(
+            angle_in_range(result.relative_angle_deg, start_deg, end_deg)
+            for start_deg, end_deg in self.angle_ranges_deg
         )
 
     def describe(self) -> str:
@@ -59,11 +56,12 @@ class RelativePositionSelector:
         if self.labels:
             parts.append("directions=" + ",".join(self.labels))
         if self.sectors:
-            parts.append("sectors=[" + ",".join(str(sector) for sector in sorted(self.sectors)) + "]")
+            parts.append(
+                "sectors=[" + ",".join(str(sector) for sector in sorted(self.sectors)) + "]"
+            )
         if self.angle_ranges_deg:
             ranges = ",".join(
-                f"[{start_deg:.6g},{end_deg:.6g}]"
-                for start_deg, end_deg in self.angle_ranges_deg
+                f"[{start_deg:.6g},{end_deg:.6g}]" for start_deg, end_deg in self.angle_ranges_deg
             )
             parts.append(f"angle_ranges_deg={ranges}")
         return "; ".join(parts)
@@ -227,7 +225,9 @@ def _normalize_direction(raw_direction: Any) -> str:
         DIRECTION_SECTORS[direction]
     except KeyError as exc:
         valid = ", ".join(sorted(DIRECTION_SECTORS))
-        raise ValueError(f"unsupported relative position direction {raw_direction!r}; valid: {valid}") from exc
+        raise ValueError(
+            f"unsupported relative position direction {raw_direction!r}; valid: {valid}"
+        ) from exc
     return direction
 
 

@@ -34,7 +34,10 @@ seed: 42
 ```
 
 - `source.type`: source parser type.
-- `source.path`: parameter source path. Relative paths are resolved relative to the sampler config file.
+- `source.path`: parameter source path. In engine runs, relative paths are resolved
+  relative to the folder from `scenario.scenario_path`. When using sampler utilities
+  standalone without a scenario base, relative paths are resolved relative to the
+  sampler config file.
 - `max_samples`: optional engine-side cap on samples to execute.
 - Remaining fields are passed to the selected sampler constructor.
 

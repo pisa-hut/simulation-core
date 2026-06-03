@@ -54,7 +54,8 @@ sampler-specific settings.
 `native` / `openscenario_native`:
 
 - No required sampler-specific fields. The OpenSCENARIO parameter distribution defines
-  the concrete values.
+  the concrete values. If `param.xosc` is absent, native sampling is skipped and the
+  scenario runs as one concrete case.
 
 `explicit`:
 

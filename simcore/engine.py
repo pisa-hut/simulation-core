@@ -172,9 +172,7 @@ class SimulationEngine:
             )
             self.max_sampler_iterations = sampler_spec.get("max_samples")
         else:
-            logger.debug(
-                "No parameter range file provided; seem as testing a concrete scenario; skipping parameter sampler."
-            )
+            logger.debug("No sampler source resolved; running as a single concrete scenario.")
             self.param_sampler = None
             self.max_sampler_iterations = None
             if self._permutation not in (None, 1):

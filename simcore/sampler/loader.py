@@ -22,6 +22,8 @@ BUILTIN_SAMPLERS = {
     "openscenario_native": "simcore.sampler.openscenario_native_sampler:OpenScenarioNativeSampler",
     "sobol": "simcore.sampler.sobol_sampler:SobolSampler",
 }
+NATIVE_SAMPLER_NAMES = {"native", "openscenario_native"}
+NATIVE_DEFAULT_SOURCE_PATH = "param.xosc"
 
 SAMPLER_CONTROL_KEYS = {
     "config_path",
@@ -75,10 +77,10 @@ def load_sampler_spec(
             f"Sampler config file {resolved_config_path} must contain a mapping/object"
         )
 
+    base_path = _source_base_path(resolved_config_path, source_base_path)
     effective = _normalize_config_relative_paths(
         file_config,
-        resolved_config_path,
-        source_base_path=source_base_path,
+        base_path=base_path,
     )
     if "name" in effective:
         raise ValueError("Sampler name must be defined in sampler.name, not config file")
@@ -88,27 +90,49 @@ def load_sampler_spec(
         raise ValueError(
             "Sampler config must not contain module_path; runner uses built-in samplers"
         )
+    if "source" in effective and not isinstance(effective["source"], dict):
+        raise ValueError("sampler config source must be a mapping/object with source.path")
+    if name in NATIVE_SAMPLER_NAMES:
+        effective = _with_native_default_source(effective, base_path)
 
     effective["name"] = name
     effective["config_path"] = str(resolved_config_path)
     return effective
 
 
+def _source_base_path(config_path: Path, source_base_path: str | Path | None = None) -> Path:
+    if source_base_path is not None:
+        return Path(source_base_path).expanduser()
+    return config_path.parent
+
+
 def _normalize_config_relative_paths(
     config: dict[str, Any],
-    config_path: Path,
-    source_base_path: str | Path | None = None,
+    base_path: Path,
 ) -> dict[str, Any]:
     config = dict(config)
-    base_path = (
-        Path(source_base_path).expanduser() if source_base_path is not None else config_path.parent
-    )
     source = config.get("source")
     if isinstance(source, dict):
         source = dict(source)
         source_path = source.get("path")
         if source_path is not None:
             source["path"] = str(_resolve_relative_path(source_path, base_path))
+        config["source"] = source
+    return config
+
+
+def _with_native_default_source(config: dict[str, Any], base_path: Path) -> dict[str, Any]:
+    source = config.get("source")
+    if source is None:
+        config["source"] = {
+            "type": "openscenario",
+            "path": str(base_path / NATIVE_DEFAULT_SOURCE_PATH),
+        }
+        return config
+    if "path" not in source:
+        source = dict(source)
+        source["path"] = str(base_path / NATIVE_DEFAULT_SOURCE_PATH)
+        source.setdefault("type", "openscenario")
         config["source"] = source
     return config
 
@@ -144,12 +168,17 @@ def infer_source_type(path: Path) -> str:
 def resolve_sampler_source(
     sampler_spec: dict[str, Any],
 ) -> tuple[Path, str] | tuple[None, None]:
+    sampler_name = sampler_spec.get("name")
     source = sampler_spec.get("source")
     if source is None:
-        if sampler_spec.get("name"):
+        if sampler_name and "config_path" in sampler_spec:
             raise ValueError(
                 "resolve_sampler_source expects an effective sampler spec; call load_sampler_spec first"
             )
+        if sampler_name in NATIVE_SAMPLER_NAMES:
+            return None, None
+        if sampler_name:
+            raise ValueError("Sampler config must define source.path")
         return None, None
     if not isinstance(source, dict):
         raise ValueError("sampler config source must be a mapping/object")
@@ -161,6 +190,10 @@ def resolve_sampler_source(
         raise ValueError("Sampler config must define source.path")
 
     source_type = source.get("type") or infer_source_type(path)
+    if not path.exists():
+        if sampler_name in NATIVE_SAMPLER_NAMES:
+            return None, None
+        raise FileNotFoundError(f"Sampler source file not found: {path}")
     return path, source_type
 
 

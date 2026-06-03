@@ -96,6 +96,10 @@ source:
 ```
 
 The native sampler uses `stepWidth` or deterministic sets as concrete values.
+For `native` / `openscenario_native`, `source.path` is optional. When omitted, the
+engine looks for `param.xosc` in the scenario folder. If the native source file is
+not present, the runner treats the scenario as a single concrete run. Other samplers
+must provide an existing `source.path`.
 
 ### Parameter Range
 

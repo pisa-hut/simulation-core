@@ -386,6 +386,14 @@ source:
         resolve_sampler_source({"name": "lhs", "config_path": str(config_path)})
 
 
+def test_resolve_sampler_source_rejects_unloaded_native_runtime_spec(tmp_path: Path) -> None:
+    config_path = tmp_path / "sampler.yaml"
+    config_path.write_text("max_samples: null\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="load_sampler_spec"):
+        resolve_sampler_source({"name": "native", "config_path": str(config_path)})
+
+
 def test_sampler_config_path_can_hold_full_sampler_spec(tmp_path: Path) -> None:
     params_path = tmp_path / "params.yaml"
     params_path.write_text(
@@ -500,9 +508,91 @@ def test_sampler_config_rejects_source_string(tmp_path: Path) -> None:
     config_path = tmp_path / "sampler.yaml"
     config_path.write_text("source: params.yaml\nn_samples: 2\n", encoding="utf-8")
 
-    effective_spec = load_sampler_spec({"name": "lhs", "config_path": str(config_path)})
-
     with pytest.raises(ValueError, match="source must be a mapping"):
+        load_sampler_spec({"name": "lhs", "config_path": str(config_path)})
+
+
+def test_native_sampler_defaults_to_param_xosc_when_present(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+    config_dir = tmp_path / "config"
+    scenario_dir.mkdir()
+    config_dir.mkdir()
+    param_path = scenario_dir / "param.xosc"
+    param_path.write_text(PVD_XML, encoding="utf-8")
+    config_path = config_dir / "native.yaml"
+    config_path.write_text("max_samples: null\n", encoding="utf-8")
+
+    effective_spec = load_sampler_spec(
+        {"name": "native", "config_path": str(config_path)},
+        source_base_path=scenario_dir,
+    )
+    source_path, source_type = resolve_sampler_source(effective_spec)
+
+    assert source_path == param_path
+    assert source_type == "openscenario"
+
+
+def test_native_sampler_missing_default_param_xosc_runs_as_concrete(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+    config_dir = tmp_path / "config"
+    scenario_dir.mkdir()
+    config_dir.mkdir()
+    config_path = config_dir / "native.yaml"
+    config_path.write_text("max_samples: null\n", encoding="utf-8")
+
+    effective_spec = load_sampler_spec(
+        {"name": "native", "config_path": str(config_path)},
+        source_base_path=scenario_dir,
+    )
+
+    assert resolve_sampler_source(effective_spec) == (None, None)
+
+
+def test_native_sampler_missing_configured_source_runs_as_concrete(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+    config_dir = tmp_path / "config"
+    scenario_dir.mkdir()
+    config_dir.mkdir()
+    config_path = config_dir / "native.yaml"
+    config_path.write_text(
+        """
+source:
+  type: openscenario
+  path: param.xosc
+""",
+        encoding="utf-8",
+    )
+
+    effective_spec = load_sampler_spec(
+        {"name": "native", "config_path": str(config_path)},
+        source_base_path=scenario_dir,
+    )
+
+    assert resolve_sampler_source(effective_spec) == (None, None)
+
+
+def test_non_native_sampler_missing_source_file_raises(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+    config_dir = tmp_path / "config"
+    scenario_dir.mkdir()
+    config_dir.mkdir()
+    config_path = config_dir / "lhs.yaml"
+    config_path.write_text(
+        """
+source:
+  type: param_range
+  path: range.yaml
+n_samples: 2
+""",
+        encoding="utf-8",
+    )
+
+    effective_spec = load_sampler_spec(
+        {"name": "lhs", "config_path": str(config_path)},
+        source_base_path=scenario_dir,
+    )
+
+    with pytest.raises(FileNotFoundError, match="Sampler source file not found"):
         resolve_sampler_source(effective_spec)
 
 

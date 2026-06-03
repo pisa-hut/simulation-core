@@ -8,7 +8,7 @@ import yaml
 
 from simcore.av_wrapper import AVWrapper
 from simcore.conditions import ConditionCode, ConditionNode, build_condition_tree
-from simcore.execution import ExecResult
+from simcore.execution import ConcreteOutcome, ExecResult
 from simcore.monitoring.frame_recorder_registry import build_frame_recorders
 from simcore.monitoring.log_manager import LogManager, LogStream
 from simcore.monitoring.recorder_registry import build_recorders
@@ -80,6 +80,8 @@ class Monitor:
             "position_parser": position_parser,
             "params": self.params,
         }
+        self.current_output_related = ""
+        self._concrete_outcomes: list[ConcreteOutcome] = []
 
         if config_path:
             self.logging_cfg = self._load_mapping_config(config_path, "monitor logging")
@@ -285,6 +287,7 @@ class Monitor:
         self.stop_reason = ""
         self.stop_condition_name = ""
         self.test_outcome = "unknown"
+        self.current_output_related = output_related
         self.params = dict(params or {})
         self.condition_context["params"] = self.params
         self.wall_start_time_s = monotonic()
@@ -326,6 +329,13 @@ class Monitor:
         )
         self.current_summary_counts[effective_status] += 1
         self.current_test_outcome_counts[effective_test_outcome] += 1
+        self._record_concrete_outcome(
+            effective_status,
+            effective_test_outcome,
+            effective_stop_condition,
+            reason,
+            wall_time_ms,
+        )
         self.current_sim_time_ms += self.final_sim_time_ns / 1e6
         self.current_wall_time_ms += wall_time_ms
         if not self.log_manager:
@@ -360,6 +370,9 @@ class Monitor:
             "abort": counts["abort"],
             "skipped": counts["skipped"],
         }
+
+    def concrete_outcomes(self) -> list[ConcreteOutcome]:
+        return list(self._concrete_outcomes)
 
     def has_finished_summary(self, output_related: str) -> bool:
         rows = self.summary_rows(output_related)
@@ -470,6 +483,39 @@ class Monitor:
             for field in recorder.fields():
                 row[f"{recorder.name}.{field}"] = values.get(field)
         return row
+
+    def _record_concrete_outcome(
+        self,
+        status: str,
+        test_outcome: str,
+        stop_condition: str,
+        reason: str,
+        wall_time_ms: float,
+    ) -> None:
+        status_map = {
+            "finished": "finished",
+            "error": "failed",
+            "fail": "failed",
+            "abort": "aborted",
+            "skipped": "skipped",
+        }
+        normalized = status_map.get(status)
+        if normalized is None:
+            logger.warning("Not recording concrete outcome with unknown status: %s", status)
+            return
+        self._concrete_outcomes.append(
+            ConcreteOutcome(
+                concrete_key=self.current_output_related,
+                status=normalized,
+                test_outcome=test_outcome,
+                reason=reason or self.stop_reason,
+                stop_condition=stop_condition,
+                params=dict(self.params) if self.params else None,
+                final_sim_time_ms=self.final_sim_time_ns / 1e6,
+                wall_time_ms=wall_time_ms,
+                total_steps=self.step_index,
+            )
+        )
 
     def _frame_fields(self) -> tuple[str, ...]:
         fields = ["step_index", "sim_time_ms"]

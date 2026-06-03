@@ -158,6 +158,14 @@ logging:
     assert summary_rows[0]["run.final_sim_time_ms"] == "20.000000"
     assert summary_rows[0]["run.params"] == "{}"
 
+    outcomes = monitor.concrete_outcomes()
+    assert len(outcomes) == 1
+    assert outcomes[0].concrete_key == "case_1"
+    assert outcomes[0].status == "finished"
+    assert outcomes[0].test_outcome == "unknown"
+    assert outcomes[0].reason == "condition:timeout"
+    assert outcomes[0].total_steps == 3
+
 
 def test_monitor_writes_agent_states_as_long_table(tmp_path: Path) -> None:
     config_path = write_config(
@@ -413,7 +421,7 @@ logging:
     summary_dir.mkdir(parents=True)
     (summary_dir / "result.csv").write_text("run.status,run.stop_reason\nabort,retry limit\n")
 
-    monitor.close(ExecResult(RetryHint.OK, "completed", 1, 1, 1))
+    monitor.close(ExecResult(RetryHint.OK, "completed", 1, 1, 1, []))
 
     rows = read_csv(output_base / "summary.csv")
     assert rows == [

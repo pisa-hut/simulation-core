@@ -166,6 +166,7 @@ class SimulationEngine:
                 finished_concrete_runs=logical_counts["finished"],
                 aborted_concrete_runs=logical_counts["abort"],
                 skipped_concrete_runs=logical_counts["skipped"],
+                concrete_outcomes=self._concrete_outcomes(),
             )
             self.close(result)
             return result
@@ -182,6 +183,7 @@ class SimulationEngine:
             result = ExecResult(
                 hint=e.hint,
                 reason=str(e),
+                concrete_outcomes=self._concrete_outcomes(),
                 **self._exec_result_terminal_counts(),
             )
         except Exception as e:
@@ -189,6 +191,7 @@ class SimulationEngine:
             result = ExecResult(
                 hint=RetryHint.RETRY,
                 reason=f"{type(e).__name__}: {e}",
+                concrete_outcomes=self._concrete_outcomes(),
                 **self._exec_result_terminal_counts(),
             )
         else:
@@ -196,6 +199,7 @@ class SimulationEngine:
             result = ExecResult(
                 hint=RetryHint.OK,
                 reason="completed",
+                concrete_outcomes=self._concrete_outcomes(),
                 **self._exec_result_terminal_counts(),
             )
         finally:
@@ -513,3 +517,8 @@ class SimulationEngine:
             "aborted_concrete_runs": counts["abort"],
             "skipped_concrete_runs": counts["skipped"],
         }
+
+    def _concrete_outcomes(self):
+        if self.monitor is None:
+            return []
+        return self.monitor.concrete_outcomes()

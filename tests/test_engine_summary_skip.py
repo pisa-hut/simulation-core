@@ -93,9 +93,8 @@ def test_scenario_source_base_path_uses_parent_for_scenario_file(tmp_path: Path)
 def test_scenario_relative_path_resolves_under_scenario_folder(tmp_path: Path) -> None:
     scenario_dir = tmp_path / "scenario"
 
-    assert (
-        _resolve_scenario_relative_path("stop_conditions.yaml", scenario_dir)
-        == str(scenario_dir / "stop_conditions.yaml")
+    assert _resolve_scenario_relative_path("stop_conditions.yaml", scenario_dir) == str(
+        scenario_dir / "stop_conditions.yaml"
     )
 
 
@@ -112,14 +111,11 @@ def test_scenario_relative_path_uses_existing_default_file(tmp_path: Path) -> No
     default_path = scenario_dir / "stop_conditions.yaml"
     default_path.write_text("condition:\n  type: timeout\n  timeout_ms: 1\n", encoding="utf-8")
 
-    assert (
-        _resolve_scenario_relative_path(
-            None,
-            scenario_dir,
-            default_filename="stop_conditions.yaml",
-        )
-        == str(default_path)
-    )
+    assert _resolve_scenario_relative_path(
+        None,
+        scenario_dir,
+        default_filename="stop_conditions.yaml",
+    ) == str(default_path)
 
 
 def test_scenario_relative_path_ignores_missing_default_file(tmp_path: Path) -> None:

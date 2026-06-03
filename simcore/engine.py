@@ -52,7 +52,9 @@ def _resolve_scenario_relative_path(
         return str(default_path) if default_path.exists() else None
 
     if not isinstance(path, (str, Path)):
-        raise TypeError(f"scenario-relative path must be a string or path, got {type(path).__name__}")
+        raise TypeError(
+            f"scenario-relative path must be a string or path, got {type(path).__name__}"
+        )
 
     if str(path) == "":
         return None

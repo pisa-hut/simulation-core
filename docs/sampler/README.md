@@ -22,12 +22,25 @@ Runtime `sampler` only accepts:
 
 Put `source`, `max_samples`, and sampler-specific settings in the sampler config file.
 
+Programmatic sampler setup should follow the same order as the engine:
+
+```python
+sampler_spec = load_sampler_spec(runtime_sampler_spec, source_base_path=scenario_folder)
+source_path, source_type = resolve_sampler_source(sampler_spec)
+parameter_space = load_parameter_space(source_path, source_type)
+sampler = create_sampler(sampler_spec, parameter_space)
+```
+
+Only `load_sampler_spec()` reads `sampler.config_path` and normalizes `source.path`.
+`resolve_sampler_source()` and `create_sampler()` expect the effective spec returned by
+`load_sampler_spec()`.
+
 ## Sampler Config
 
 ```yaml
 source:
   type: param_range
-  path: parameter_space.yaml
+  path: range.yaml
 max_samples: null
 n_samples: 50
 seed: 42
@@ -79,7 +92,7 @@ Use for native OpenSCENARIO parameter distributions:
 ```yaml
 source:
   type: openscenario
-  path: sample_param_distribution.xosc
+  path: param.xosc
 ```
 
 The native sampler uses `stepWidth` or deterministic sets as concrete values.
@@ -160,7 +173,7 @@ Each explicit sample must have a unique `id` and a `params` mapping. Samples do 
 ```yaml
 source:
   type: param_range
-  path: parameter_space.yaml
+  path: range.yaml
 defaults:
   n: 3
 parameters:
@@ -183,7 +196,7 @@ Grid settings:
 ```yaml
 source:
   type: param_range
-  path: parameter_space.yaml
+  path: range.yaml
 n_samples: 50
 seed: 42
 ```
@@ -193,7 +206,7 @@ seed: 42
 ```yaml
 source:
   type: param_range
-  path: parameter_space.yaml
+  path: range.yaml
 n_samples: 64
 skip: 1
 ```
@@ -203,11 +216,3 @@ LHS and Sobol default to at most 16 samples when `n_samples` is omitted.
 ## Examples
 
 Detailed sampler config examples are in [examples](sampler/examples/).
-
-Inspect sampler output without running simulator/AV:
-
-```bash
-python sampler_tester.py docs/sampler/examples/parameter_space.yaml --source-type param_range --method lhs --n-samples 8 --seed 42
-python sampler_tester.py docs/sampler/examples/parameter_space.yaml --source-type param_range --method sobol --n-samples 8
-python sampler_tester.py docs/sampler/examples/sample_param_distribution.xosc --method native
-```

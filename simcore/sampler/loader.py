@@ -24,7 +24,6 @@ BUILTIN_SAMPLERS = {
 }
 
 SAMPLER_CONTROL_KEYS = {
-    "_config_loaded",
     "config_path",
     "max_samples",
     "name",
@@ -49,11 +48,9 @@ def load_sampler_spec(
     to the sampler config file for standalone sampler use.
     """
     sampler_spec = dict(sampler_spec or {})
-    if sampler_spec.get("_config_loaded"):
-        return sampler_spec
 
     if not sampler_spec:
-        return {"_config_loaded": True}
+        return {}
 
     unknown_keys = set(sampler_spec) - RUNTIME_SAMPLER_KEYS
     if unknown_keys:
@@ -87,10 +84,13 @@ def load_sampler_spec(
         raise ValueError("Sampler name must be defined in sampler.name, not config file")
     if "method" in effective:
         raise ValueError("Sampler config must not contain method; use sampler.name")
+    if "module_path" in effective:
+        raise ValueError(
+            "Sampler config must not contain module_path; runner uses built-in samplers"
+        )
 
     effective["name"] = name
     effective["config_path"] = str(resolved_config_path)
-    effective["_config_loaded"] = True
     return effective
 
 
@@ -104,9 +104,7 @@ def _normalize_config_relative_paths(
         Path(source_base_path).expanduser() if source_base_path is not None else config_path.parent
     )
     source = config.get("source")
-    if isinstance(source, str):
-        config["source"] = str(_resolve_relative_path(source, base_path))
-    elif isinstance(source, dict):
+    if isinstance(source, dict):
         source = dict(source)
         source_path = source.get("path")
         if source_path is not None:
@@ -146,11 +144,12 @@ def infer_source_type(path: Path) -> str:
 def resolve_sampler_source(
     sampler_spec: dict[str, Any],
 ) -> tuple[Path, str] | tuple[None, None]:
-    sampler_spec = load_sampler_spec(sampler_spec)
     source = sampler_spec.get("source")
     if source is None:
         if sampler_spec.get("name"):
-            raise ValueError("Sampler config must define source.path")
+            raise ValueError(
+                "resolve_sampler_source expects an effective sampler spec; call load_sampler_spec first"
+            )
         return None, None
     if not isinstance(source, dict):
         raise ValueError("sampler config source must be a mapping/object")
@@ -190,10 +189,13 @@ def create_sampler(
     parameter_space: ParameterSpace,
     past_results: Iterable[TestResult] | None = None,
 ) -> Sampler:
-    sampler_spec = load_sampler_spec(sampler_spec)
     name = sampler_spec.get("name")
     if not name:
         raise ValueError("sampler.name is required")
+    if "config_path" in sampler_spec and "source" not in sampler_spec:
+        raise ValueError(
+            "create_sampler expects an effective sampler spec; call load_sampler_spec first"
+        )
 
     module_path = BUILTIN_SAMPLERS.get(name)
     if module_path is None:

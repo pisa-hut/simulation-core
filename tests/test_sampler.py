@@ -40,7 +40,7 @@ PVD_XML = """\
 
 
 def _effective_sampler_spec(name: str, **config):
-    return {"_config_loaded": True, "name": name, **config}
+    return {"name": name, **config}
 
 
 def _params(sample: Sample | None):
@@ -362,14 +362,28 @@ samples:
         load_parameter_space(samples_path, "explicit")
 
 
-def test_create_sampler_merges_config_path(tmp_path: Path) -> None:
+def test_create_sampler_rejects_unloaded_runtime_spec(tmp_path: Path) -> None:
     config_path = tmp_path / "sampler.yaml"
     config_path.write_text("n_samples: 2\nseed: 1\n", encoding="utf-8")
     space = ParameterSpace.from_specs([ParameterSpec("speed", (10.0, 20.0, 30.0))])
 
-    sampler = create_sampler({"name": "lhs", "config_path": str(config_path)}, space)
+    with pytest.raises(ValueError, match="load_sampler_spec"):
+        create_sampler({"name": "lhs", "config_path": str(config_path)}, space)
 
-    assert sampler.total_samples() == 2
+
+def test_resolve_sampler_source_rejects_unloaded_runtime_spec(tmp_path: Path) -> None:
+    config_path = tmp_path / "sampler.yaml"
+    config_path.write_text(
+        """
+source:
+  type: param_range
+  path: params.yaml
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="load_sampler_spec"):
+        resolve_sampler_source({"name": "lhs", "config_path": str(config_path)})
 
 
 def test_sampler_config_path_can_hold_full_sampler_spec(tmp_path: Path) -> None:
@@ -482,6 +496,16 @@ n_samples: 3
     assert source_path == params_path
 
 
+def test_sampler_config_rejects_source_string(tmp_path: Path) -> None:
+    config_path = tmp_path / "sampler.yaml"
+    config_path.write_text("source: params.yaml\nn_samples: 2\n", encoding="utf-8")
+
+    effective_spec = load_sampler_spec({"name": "lhs", "config_path": str(config_path)})
+
+    with pytest.raises(ValueError, match="source must be a mapping"):
+        resolve_sampler_source(effective_spec)
+
+
 def test_runtime_sampler_spec_rejects_inline_config(tmp_path: Path) -> None:
     config_path = tmp_path / "sampler.yaml"
     config_path.write_text("n_samples: 2\nseed: 1\n", encoding="utf-8")
@@ -522,6 +546,17 @@ def test_sampler_config_rejects_method_in_config_file(tmp_path: Path) -> None:
     config_path.write_text("method: sobol\nn_samples: 2\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="must not contain method"):
+        load_sampler_spec({"name": "lhs", "config_path": str(config_path)})
+
+
+def test_sampler_config_rejects_module_path_in_config_file(tmp_path: Path) -> None:
+    config_path = tmp_path / "sampler.yaml"
+    config_path.write_text(
+        "module_path: tests.test_sampler:DummyExternalSampler\nn_samples: 2\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must not contain module_path"):
         load_sampler_spec({"name": "lhs", "config_path": str(config_path)})
 
 

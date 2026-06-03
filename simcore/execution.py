@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import grpc
 
@@ -13,12 +14,26 @@ class RetryHint(Enum):
 
 
 @dataclass(frozen=True)
+class ConcreteOutcome:
+    concrete_key: str
+    status: str
+    test_outcome: str
+    reason: str
+    stop_condition: str
+    params: dict[str, Any] | None
+    final_sim_time_ms: float
+    wall_time_ms: float
+    total_steps: int
+
+
+@dataclass(frozen=True)
 class ExecResult:
     hint: RetryHint
     reason: str
     finished_concrete_runs: int
     aborted_concrete_runs: int
     skipped_concrete_runs: int
+    concrete_outcomes: list[ConcreteOutcome]
 
 
 @dataclass(frozen=True)

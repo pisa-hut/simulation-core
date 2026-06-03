@@ -50,6 +50,9 @@ class FakeMonitor:
             "skipped": self.current_summary_counts["skipped"],
         }
 
+    def concrete_outcomes(self):
+        return []
+
 
 class FakeSampler:
     def __init__(self, samples):

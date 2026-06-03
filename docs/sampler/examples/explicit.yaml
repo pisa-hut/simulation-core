@@ -1,6 +1,6 @@
 source:
   type: explicit
-  path: explicit.yaml
+  path: explicit_samples.yaml
 
 # Optional engine-side cap. Remove or set to null to execute every listed sample.
 max_samples: null

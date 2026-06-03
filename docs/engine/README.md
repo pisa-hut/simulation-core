@@ -88,7 +88,7 @@ outputs/my_task/iteration_cutin_fast/
     "title": "my_scenario",
     "scenario_path": "/path/to/scenario",
     "rmlib_path": "/path/to/libesminiRMLib.so",
-    "stop_condition_config_path": "/path/to/stop_conditions.yaml",
+    "stop_condition_config_path": "stop_conditions.yaml",
     "goal_config": {
       "position": {
         "type": "LanePosition",

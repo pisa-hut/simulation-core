@@ -4,7 +4,12 @@ from types import SimpleNamespace
 import grpc
 import pytest
 
-from simcore.engine import SimulationEngine
+import simcore.engine as engine_module
+from simcore.engine import (
+    SimulationEngine,
+    _resolve_scenario_relative_path,
+    _scenario_source_base_path,
+)
 from simcore.execution import RetryHint, ScenarioExecutionError
 from simcore.sampler import Sample
 
@@ -70,6 +75,165 @@ class FakeSampler:
         sample = self.samples[self.index]
         self.index += 1
         return sample
+
+
+def test_scenario_source_base_path_uses_scenario_folder(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+    scenario_dir.mkdir()
+
+    assert _scenario_source_base_path(scenario_dir) == scenario_dir
+
+
+def test_scenario_source_base_path_uses_parent_for_scenario_file(tmp_path: Path) -> None:
+    scenario_file = tmp_path / "scenario" / "case.xosc"
+
+    assert _scenario_source_base_path(scenario_file) == scenario_file.parent
+
+
+def test_scenario_relative_path_resolves_under_scenario_folder(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+
+    assert (
+        _resolve_scenario_relative_path("stop_conditions.yaml", scenario_dir)
+        == str(scenario_dir / "stop_conditions.yaml")
+    )
+
+
+def test_scenario_relative_path_preserves_absolute_path(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+    absolute_path = tmp_path / "config" / "stop_conditions.yaml"
+
+    assert _resolve_scenario_relative_path(absolute_path, scenario_dir) == str(absolute_path)
+
+
+def test_scenario_relative_path_uses_existing_default_file(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+    scenario_dir.mkdir()
+    default_path = scenario_dir / "stop_conditions.yaml"
+    default_path.write_text("condition:\n  type: timeout\n  timeout_ms: 1\n", encoding="utf-8")
+
+    assert (
+        _resolve_scenario_relative_path(
+            None,
+            scenario_dir,
+            default_filename="stop_conditions.yaml",
+        )
+        == str(default_path)
+    )
+
+
+def test_scenario_relative_path_ignores_missing_default_file(tmp_path: Path) -> None:
+    scenario_dir = tmp_path / "scenario"
+
+    assert (
+        _resolve_scenario_relative_path(
+            None,
+            scenario_dir,
+            default_filename="stop_conditions.yaml",
+        )
+        is None
+    )
+
+
+def test_engine_resolves_stop_condition_config_relative_to_scenario_folder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario_dir = tmp_path / "scenario"
+    scenario_dir.mkdir()
+    captured = {}
+
+    class FakePositionParser:
+        def close(self):
+            pass
+
+    class CapturingMonitor:
+        def __init__(self, *args, stop_condition_config_path=None, **kwargs):
+            captured["stop_condition_config_path"] = stop_condition_config_path
+
+    monkeypatch.setattr(
+        engine_module.PositionParser,
+        "from_specs",
+        staticmethod(lambda scenario_spec, map_spec: FakePositionParser()),
+    )
+    monkeypatch.setattr(
+        engine_module.ScenarioPack,
+        "from_dict",
+        staticmethod(lambda scenario_spec, map_spec, position_parser=None: object()),
+    )
+    monkeypatch.setattr(engine_module, "SimWrapper", lambda *args, **kwargs: object())
+    monkeypatch.setattr(engine_module, "AVWrapper", lambda *args, **kwargs: object())
+    monkeypatch.setattr(engine_module, "Monitor", CapturingMonitor)
+
+    engine_module.SimulationEngine(
+        {
+            "runtime": {"dt": 0.1},
+            "task": {"output_dir": str(tmp_path / "outputs")},
+            "simulator": {},
+            "av": {},
+            "map": {"name": "test_map"},
+            "scenario": {
+                "title": "test_scenario",
+                "scenario_path": str(scenario_dir),
+                "stop_condition_config_path": "stop_conditions.yaml",
+            },
+            "sampler": {},
+            "monitor": {},
+        }
+    )
+
+    assert captured["stop_condition_config_path"] == str(scenario_dir / "stop_conditions.yaml")
+
+
+def test_engine_uses_default_stop_conditions_file_from_scenario_folder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario_dir = tmp_path / "scenario"
+    scenario_dir.mkdir()
+    default_path = scenario_dir / "stop_conditions.yaml"
+    default_path.write_text("condition:\n  type: timeout\n  timeout_ms: 1\n", encoding="utf-8")
+    captured = {}
+
+    class FakePositionParser:
+        def close(self):
+            pass
+
+    class CapturingMonitor:
+        def __init__(self, *args, stop_condition_config_path=None, **kwargs):
+            captured["stop_condition_config_path"] = stop_condition_config_path
+
+    monkeypatch.setattr(
+        engine_module.PositionParser,
+        "from_specs",
+        staticmethod(lambda scenario_spec, map_spec: FakePositionParser()),
+    )
+    monkeypatch.setattr(
+        engine_module.ScenarioPack,
+        "from_dict",
+        staticmethod(lambda scenario_spec, map_spec, position_parser=None: object()),
+    )
+    monkeypatch.setattr(engine_module, "SimWrapper", lambda *args, **kwargs: object())
+    monkeypatch.setattr(engine_module, "AVWrapper", lambda *args, **kwargs: object())
+    monkeypatch.setattr(engine_module, "Monitor", CapturingMonitor)
+
+    engine_module.SimulationEngine(
+        {
+            "runtime": {"dt": 0.1},
+            "task": {"output_dir": str(tmp_path / "outputs")},
+            "simulator": {},
+            "av": {},
+            "map": {"name": "test_map"},
+            "scenario": {
+                "title": "test_scenario",
+                "scenario_path": str(scenario_dir),
+            },
+            "sampler": {},
+            "monitor": {},
+        }
+    )
+
+    assert captured["stop_condition_config_path"] == str(default_path)
 
 
 def make_engine(

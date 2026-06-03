@@ -40,6 +40,28 @@ def _scenario_source_base_path(scenario_path: str | Path | None) -> Path | None:
     return path
 
 
+def _resolve_scenario_relative_path(
+    path: str | Path | None,
+    scenario_base_path: Path | None,
+    default_filename: str | None = None,
+) -> str | None:
+    if path is None:
+        if scenario_base_path is None or default_filename is None:
+            return None
+        default_path = scenario_base_path / default_filename
+        return str(default_path) if default_path.exists() else None
+
+    if not isinstance(path, (str, Path)):
+        raise TypeError(f"scenario-relative path must be a string or path, got {type(path).__name__}")
+
+    if str(path) == "":
+        return None
+    resolved_path = Path(path).expanduser()
+    if resolved_path.is_absolute() or scenario_base_path is None:
+        return str(resolved_path)
+    return str(scenario_base_path / resolved_path)
+
+
 class SimulationEngine:
     def __init__(self, spec: dict[str, Any]):
         runtime_spec = spec.get("runtime", {})
@@ -47,9 +69,10 @@ class SimulationEngine:
         sim_spec = spec.get("simulator", {})
         av_spec = spec.get("av", {})
         scenario_spec = spec.get("scenario", {})
+        scenario_base_path = _scenario_source_base_path(scenario_spec.get("scenario_path"))
         sampler_spec = load_sampler_spec(
             spec.get("sampler", {}),
-            source_base_path=_scenario_source_base_path(scenario_spec.get("scenario_path")),
+            source_base_path=scenario_base_path,
         )
         monitor_spec = spec.get("monitor", {})
         map_spec = spec.get("map", {})
@@ -125,7 +148,11 @@ class SimulationEngine:
             av=self.av,
             sim=self.sim,
             config_path=monitor_spec.get("config_path", None),
-            stop_condition_config_path=scenario_spec.get("stop_condition_config_path", None),
+            stop_condition_config_path=_resolve_scenario_relative_path(
+                scenario_spec.get("stop_condition_config_path"),
+                scenario_base_path,
+                default_filename="stop_conditions.yaml",
+            ),
             sps=self.sps,
             position_parser=self.position_parser,
             job_id=self.job_id,

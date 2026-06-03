@@ -7,7 +7,8 @@
 ```json
 {
   "scenario": {
-    "stop_condition_config_path": "./docs/monitor/examples/stop_condition_config_example.yaml"
+    "scenario_path": "/path/to/scenario",
+    "stop_condition_config_path": "stop_conditions.yaml"
   },
   "monitor": {
     "config_path": "./docs/monitor/examples/logging_config_example.yaml"
@@ -18,7 +19,10 @@
 The current engine instantiates `simcore.monitor.Monitor` directly.
 
 `monitor.config_path` points to reusable logging config. `scenario.stop_condition_config_path`
-points to scenario-specific stop logic.
+points to scenario-specific stop logic. Relative stop-condition paths are resolved under
+the folder from `scenario.scenario_path`; absolute paths are used as-is. If
+`scenario.stop_condition_config_path` is omitted, the engine uses
+`stop_conditions.yaml` from the scenario folder when that file exists.
 
 ## Config Shape
 

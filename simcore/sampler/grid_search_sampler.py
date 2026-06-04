@@ -24,6 +24,7 @@ class GridSearchSampler(Sampler):
         past_results: Iterable[TestResult] | None = None,
         defaults: dict[str, Any] | None = None,
         parameters: dict[str, dict[str, Any]] | None = None,
+        output_parameters: Any = None,
         n: int | None = None,
         step: float | None = None,
         **_: Any,
@@ -35,7 +36,7 @@ class GridSearchSampler(Sampler):
             n=n,
             step=step,
         )
-        super().__init__(parameter_space)
+        super().__init__(parameter_space, output_parameters=output_parameters)
 
         self._names = parameter_space.names
         self._grid = [spec.values for spec in parameter_space.parameters]
@@ -54,7 +55,7 @@ class GridSearchSampler(Sampler):
     ) -> Sample | None:
         for values in self._combinations:
             self._emitted += 1
-            return Sample(params=dict(zip(self._names, values, strict=True)))
+            return self.prepare_sample(Sample(params=dict(zip(self._names, values, strict=True))))
 
         return None
 
@@ -115,7 +116,10 @@ def _discretize_parameter_space(
             )
         )
 
-    return ParameterSpace.from_specs(specs)
+    names = [spec.name for spec in specs]
+    if len(names) != len(set(names)):
+        raise ValueError(f"Duplicate parameter names in parameter space: {names}")
+    return ParameterSpace(parameters=tuple(specs), metadata=dict(parameter_space.metadata))
 
 
 def _validate_parameter_config(parameter_name: str, config: dict[str, Any]) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from simcore.sampler.space import ParameterSpace, ParameterSpec
+from simcore.sampler.space import OUTPUT_PARAMETERS_METADATA_KEY, ParameterSpace, ParameterSpec
 from simcore.utils.util import get_cfg
 
 
@@ -41,7 +41,29 @@ def parse_parameter_range_dict(data: dict[str, Any]) -> ParameterSpace:
             )
         )
 
-    return ParameterSpace.from_specs(specs)
+    metadata = {}
+    raw_outputs = _raw_output_parameters(data)
+    if raw_outputs is not None:
+        metadata[OUTPUT_PARAMETERS_METADATA_KEY] = raw_outputs
+
+    names = [spec.name for spec in specs]
+    if len(names) != len(set(names)):
+        raise ValueError(f"Duplicate parameter names in parameter space: {names}")
+    return ParameterSpace(parameters=tuple(specs), metadata=metadata)
+
+
+def _raw_output_parameters(data: dict[str, Any]) -> Any:
+    configured_keys = [
+        key
+        for key in ("outputs", "output_parameters", "sim_parameters")
+        if key in data
+    ]
+    if len(configured_keys) > 1:
+        keys = ", ".join(configured_keys)
+        raise ValueError(f"Parameter range config must use only one output mapping key; got: {keys}")
+    if not configured_keys:
+        return None
+    return data[configured_keys[0]]
 
 
 def parse_parameter_range_file(path: Path) -> ParameterSpace:

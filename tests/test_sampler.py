@@ -18,6 +18,7 @@ from simcore.sampler import (
 from simcore.sampler.grid_search_sampler import GridSearchSampler
 from simcore.sampler.loader import import_from_path, load_sampler_spec, resolve_sampler_source
 from simcore.sampler.parsers.range_yaml import parse_parameter_range_file
+from simcore.sampler.space import OUTPUT_PARAMETERS_METADATA_KEY
 
 PVD_XML = """\
 <OpenSCENARIO>
@@ -74,6 +75,90 @@ def test_grid_search_sampler_iterates_cartesian_product() -> None:
     assert _params(sampler.next()) == {"speed": 20.0, "offset": -1.0}
     assert _params(sampler.next()) == {"speed": 20.0, "offset": 0.0}
     assert sampler.next() is None
+
+
+def test_range_yaml_outputs_define_sim_params_without_changing_sample_params(
+    tmp_path: Path,
+) -> None:
+    range_file = tmp_path / "range.yaml"
+    range_file.write_text(
+        """
+parameters:
+  - name: Ego_S
+    type: double
+    values: [100.0]
+  - name: Relative_Dist
+    type: double
+    values: [25.0]
+  - name: Ego_Speed
+    type: double
+    values: [20.0]
+outputs:
+  Ego_S: Ego_S
+  Agent_S: Ego_S + Relative_Dist
+  Agent_Speed: Ego_Speed / 2
+""",
+        encoding="utf-8",
+    )
+
+    space = load_parameter_space(range_file, "param_range")
+    sampler = create_sampler(_effective_sampler_spec("grid"), space)
+
+    sample = sampler.next()
+
+    assert sample is not None
+    assert sample.params == {"Ego_S": 100.0, "Relative_Dist": 25.0, "Ego_Speed": 20.0}
+    assert sample.sim_params == {
+        "Ego_S": 100.0,
+        "Agent_S": 125.0,
+        "Agent_Speed": 10.0,
+    }
+
+
+def test_range_yaml_outputs_can_reference_previous_outputs(tmp_path: Path) -> None:
+    range_file = tmp_path / "range.yaml"
+    range_file.write_text(
+        """
+parameters:
+  - name: Ego_S
+    type: double
+    values: [100.0]
+outputs:
+  Agent_S: Ego_S + 20
+  Agent_End_S:
+    expression: Agent_S + 5
+    type: int
+""",
+        encoding="utf-8",
+    )
+    space = load_parameter_space(range_file, "param_range")
+    sampler = create_sampler(_effective_sampler_spec("grid"), space)
+
+    sample = sampler.next()
+
+    assert sample is not None
+    assert sample.params == {"Ego_S": 100.0}
+    assert sample.sim_params == {"Agent_S": 120.0, "Agent_End_S": 125}
+
+
+def test_range_yaml_rejects_multiple_output_mapping_keys(tmp_path: Path) -> None:
+    range_file = tmp_path / "range.yaml"
+    range_file.write_text(
+        """
+parameters:
+  - name: Ego_S
+    type: double
+    values: [100.0]
+outputs:
+  Ego_S: Ego_S
+sim_parameters:
+  Ego_S: Ego_S
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="only one output mapping key"):
+        load_parameter_space(range_file, "param_range")
 
 
 def test_grid_search_sampler_ignores_past_results_for_now() -> None:
@@ -269,6 +354,21 @@ def test_native_sampler_uses_openscenario_parameter_values() -> None:
     assert _params(sampler.next()) == {"speed": 10.0}
 
 
+def test_native_sampler_ignores_output_mapping_metadata() -> None:
+    space = ParameterSpace(
+        parameters=(ParameterSpec("ego_s", (100.0,)),),
+        metadata={OUTPUT_PARAMETERS_METADATA_KEY: {"agent_s": "ego_s + 20"}},
+    )
+
+    sampler = create_sampler(_effective_sampler_spec("native"), space)
+    sample = sampler.next()
+
+    assert isinstance(sampler, OpenScenarioNativeSampler)
+    assert sample is not None
+    assert sample.params == {"ego_s": 100.0}
+    assert sample.sim_params == {"ego_s": 100.0}
+
+
 def test_parse_parameter_range_yaml(tmp_path: Path) -> None:
     range_file = tmp_path / "params.yaml"
     range_file.write_text(
@@ -429,6 +529,23 @@ max_samples: 2
     assert effective_spec["max_samples"] == 2
     assert isinstance(sampler, LHSSampler)
     assert sampler.total_samples() == 3
+
+
+def test_sampler_config_rejects_derived_parameters_section(tmp_path: Path) -> None:
+    config_path = tmp_path / "sampler.yaml"
+    config_path.write_text(
+        """
+source:
+  type: param_range
+  path: params.yaml
+derived_parameters:
+  agent_s: ego_s + relative_dist
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="range source.*outputs"):
+        load_sampler_spec({"name": "lhs", "config_path": str(config_path)})
 
 
 def test_sampler_source_path_resolves_relative_to_scenario_folder(tmp_path: Path) -> None:

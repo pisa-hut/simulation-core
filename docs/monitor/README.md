@@ -136,6 +136,48 @@ Logical nodes:
 
 When a condition stops the scenario, the summary receives `run.stop_condition`, `run.test_outcome`, and detailed `run.stop_reason`.
 
+## Pair TTC
+
+`pair_ttc` uses actor A as the ego/reference actor. By default it computes
+longitudinal TTC in actor A's heading frame and ignores actors outside a lateral
+corridor:
+
+```yaml
+- type: pair_ttc
+  name: low_ttc_ego_to_agent_1
+  outcome: Fail
+  actor_id_a: 0
+  actor_id_b: 1
+  threshold_s: 1.5
+  lateral_threshold_m: 2.0
+```
+
+The default calculation is:
+
+```text
+longitudinal_distance = dot(position_b - position_a, forward_a)
+lateral_distance = dot(position_b - position_a, side_a)
+closing_speed = forward_speed_a - forward_speed_b
+TTC = longitudinal_distance / closing_speed
+```
+
+TTC is only valid when actor B is ahead of actor A, `abs(lateral_distance)` is
+within `lateral_threshold_m`, and `closing_speed > 0`. This avoids false low-TTC
+events when ego quickly overtakes a slower actor in an adjacent lane. Set
+`lateral_threshold_m: null` to disable the lateral gate.
+
+For the previous point-to-point radial closing behavior:
+
+```yaml
+- type: pair_ttc
+  name: low_radial_ttc
+  outcome: Fail
+  actor_id_a: 0
+  actor_id_b: 1
+  threshold_s: 1.5
+  mode: radial
+```
+
 ## Kinematic Threshold
 
 ```yaml
@@ -244,7 +286,7 @@ Built-in frame recorders:
 | Type | Fields |
 | --- | --- |
 | `ego_state` | `x`, `y`, `z`, `yaw`, `speed`, `acceleration`, `yaw_rate`, `yaw_acceleration` |
-| `pair_ttc` | `distance_m`, `closing_speed_mps`, `ttc_s` |
+| `pair_ttc` | `distance_m`, `closing_speed_mps`, `ttc_s`; optional `longitudinal_distance_m`, `lateral_distance_m` |
 
 ### Table Recorders
 

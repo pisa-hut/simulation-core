@@ -20,6 +20,8 @@ class FakeMonitor:
         self.retryable_failures = 0
         self.finalize_calls = []
         self.close_result = None
+        self.final_sim_time_ns = 0
+        self.stop_reason = ""
         self.current_summary_counts = {"finished": 0, "error": 0, "skipped": 0, "abort": 0}
 
     def has_finished_summary(self, output_related: str) -> bool:
@@ -253,7 +255,7 @@ def test_concrete_wrapper_skips_finished_summary_without_status_dir(tmp_path: Pa
     engine = make_engine(tmp_path, finished=True)
     ran = False
 
-    def run_concrete(output_related, sps, params=None):
+    def run_concrete(output_related, sps, params=None, *, sim_params=None):
         nonlocal ran
         ran = True
 
@@ -269,7 +271,7 @@ def test_concrete_wrapper_overwrite_reruns_finished_summary(tmp_path: Path) -> N
     engine = make_engine(tmp_path, finished=True, overwrite=True)
     ran = False
 
-    def run_concrete(output_related, sps, params=None):
+    def run_concrete(output_related, sps, params=None, *, sim_params=None):
         nonlocal ran
         ran = True
 
@@ -284,7 +286,7 @@ def test_concrete_wrapper_skips_previous_skipped_summary(tmp_path: Path) -> None
     engine = make_engine(tmp_path, status="skipped")
     ran = False
 
-    def run_concrete(output_related, sps, params=None):
+    def run_concrete(output_related, sps, params=None, *, sim_params=None):
         nonlocal ran
         ran = True
 
@@ -299,7 +301,7 @@ def test_concrete_wrapper_skips_previous_aborted_summary(tmp_path: Path) -> None
     engine = make_engine(tmp_path, status="abort")
     ran = False
 
-    def run_concrete(output_related, sps, params=None):
+    def run_concrete(output_related, sps, params=None, *, sim_params=None):
         nonlocal ran
         ran = True
 
@@ -314,7 +316,7 @@ def test_concrete_wrapper_does_not_overwrite_previous_aborted_summary(tmp_path: 
     engine = make_engine(tmp_path, status="abort", overwrite=True)
     ran = False
 
-    def run_concrete(output_related, sps, params=None):
+    def run_concrete(output_related, sps, params=None, *, sim_params=None):
         nonlocal ran
         ran = True
 
@@ -329,7 +331,7 @@ def test_concrete_wrapper_reruns_previous_retryable_error(tmp_path: Path) -> Non
     engine = make_engine(tmp_path, status="error")
     ran = False
 
-    def run_concrete(output_related, sps, params=None):
+    def run_concrete(output_related, sps, params=None, *, sim_params=None):
         nonlocal ran
         ran = True
 
@@ -343,7 +345,7 @@ def test_concrete_wrapper_reruns_previous_retryable_error(tmp_path: Path) -> Non
 def test_concrete_wrapper_does_not_create_status_dir_on_failure(tmp_path: Path) -> None:
     engine = make_engine(tmp_path, finished=False)
 
-    def run_concrete(output_related, sps, params=None):
+    def run_concrete(output_related, sps, params=None, *, sim_params=None):
         raise RuntimeError("failed")
 
     engine.run_concrete = run_concrete
@@ -357,7 +359,7 @@ def test_concrete_wrapper_does_not_create_status_dir_on_failure(tmp_path: Path) 
 def test_concrete_wrapper_records_failed_precondition_skip(tmp_path: Path) -> None:
     engine = make_engine(tmp_path, finished=False)
 
-    def run_concrete(output_related, sps, params=None):
+    def run_concrete(output_related, sps, params=None, *, sim_params=None):
         raise ScenarioExecutionError(
             "sim reset failed: FAILED_PRECONDITION - fail to set route",
             hint=RetryHint.DONT_RETRY,
@@ -383,7 +385,7 @@ def test_concrete_wrapper_aborts_after_too_many_retryable_failures(tmp_path: Pat
     engine.monitor.retryable_failures = 3
     ran = False
 
-    def run_concrete(output_related, sps, params=None):
+    def run_concrete(output_related, sps, params=None, *, sim_params=None):
         nonlocal ran
         ran = True
 
@@ -478,7 +480,7 @@ def test_run_logical_runs_only_requested_permutation(tmp_path: Path) -> None:
     engine._permutation = 2
     calls = []
 
-    def concrete_wrapper(output_related, sps, params=None):
+    def concrete_wrapper(output_related, sps, params=None, *, sim_params=None):
         calls.append((output_related, params))
 
     engine.concrete_wrapper = concrete_wrapper
@@ -503,7 +505,7 @@ def test_run_logical_without_permutation_runs_all_iterations(tmp_path: Path) -> 
     engine._permutation = None
     calls = []
 
-    def concrete_wrapper(output_related, sps, params=None):
+    def concrete_wrapper(output_related, sps, params=None, *, sim_params=None):
         calls.append((output_related, params))
 
     engine.concrete_wrapper = concrete_wrapper
@@ -530,7 +532,7 @@ def test_run_logical_uses_explicit_sample_ids_for_iteration_folders(tmp_path: Pa
     engine._permutation = None
     calls = []
 
-    def concrete_wrapper(output_related, sps, params=None):
+    def concrete_wrapper(output_related, sps, params=None, *, sim_params=None):
         calls.append((output_related, params))
 
     engine.concrete_wrapper = concrete_wrapper
@@ -540,6 +542,44 @@ def test_run_logical_uses_explicit_sample_ids_for_iteration_folders(tmp_path: Pa
     assert calls == [
         ("iteration_case_a", {"speed": 10}),
         ("iteration_case_b", {"offset": -1.5, "behavior": "cutin"}),
+    ]
+
+
+def test_run_logical_passes_derived_sim_params_separately(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine.param_sampler = FakeSampler(
+        [
+            Sample(
+                id="cutin",
+                params={"ego_s": 100, "relative_dist": 25},
+                metadata={
+                    "sim_params": {
+                        "ego_s": 100,
+                        "relative_dist": 25,
+                        "agent_s": 125,
+                    }
+                },
+            ),
+        ]
+    )
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = None
+    calls = []
+
+    def concrete_wrapper(output_related, sps, params=None, *, sim_params=None):
+        calls.append((output_related, params, sim_params))
+
+    engine.concrete_wrapper = concrete_wrapper
+
+    engine.run_logical()
+
+    assert calls == [
+        (
+            "iteration_cutin",
+            {"ego_s": 100, "relative_dist": 25},
+            {"ego_s": 100, "relative_dist": 25, "agent_s": 125},
+        )
     ]
 
 
@@ -556,7 +596,7 @@ def test_run_logical_permutation_uses_explicit_sample_id(tmp_path: Path) -> None
     engine._permutation = 2
     calls = []
 
-    def concrete_wrapper(output_related, sps, params=None):
+    def concrete_wrapper(output_related, sps, params=None, *, sim_params=None):
         calls.append((output_related, params))
 
     engine.concrete_wrapper = concrete_wrapper
@@ -634,3 +674,36 @@ def test_run_concrete_stops_before_sim_reset_when_monitor_precheck_triggers(
     assert monitor.finalize_calls == [
         ("finished", "Stop condition 'invalid_params' triggered"),
     ]
+
+
+def test_run_concrete_logs_sampled_params_but_resets_sim_with_sim_params(
+    tmp_path: Path,
+) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine._dt_s = 0.1
+    engine._speedup_ratio = 0
+    monitor = FakeMonitor(status=None)
+    engine.monitor = monitor
+    engine.av = SimpleNamespace(reset=lambda output_related, sps, raw_obs: None)
+    sim_calls = []
+
+    def sim_reset(output_related, sps, params):
+        sim_calls.append((output_related, params))
+        return SimpleNamespace(objects=[])
+
+    engine.sim = SimpleNamespace(reset=sim_reset)
+
+    def should_stop(check_external_quit=True):
+        return len(monitor.finalize_calls) == 0 and len(sim_calls) > 0
+
+    monitor.should_stop = should_stop
+
+    engine.run_concrete(
+        "case_1",
+        sps=None,
+        params={"ego_s": 100, "relative_dist": 25},
+        sim_params={"ego_s": 100, "relative_dist": 25, "agent_s": 125},
+    )
+
+    assert monitor.reset_call == ("case_1", {"ego_s": 100, "relative_dist": 25}, False)
+    assert sim_calls == [("case_1", {"ego_s": 100, "relative_dist": 25, "agent_s": 125})]

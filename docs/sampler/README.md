@@ -62,6 +62,10 @@ Every sampler returns:
 Sample(id: str | None, params: dict, metadata: dict)
 ```
 
+`Sample.params` is the sampled parameter set and is what monitor summaries record.
+When parameter-range `outputs` are configured, `Sample.sim_params` contains those
+mapped output fields; the engine sends `Sample.sim_params` to the simulator.
+
 When `Sample.id` is omitted, output folders use the 1-based sequence:
 
 ```text
@@ -107,15 +111,20 @@ Use for domain-based `grid`, `lhs`, and `sobol`:
 
 ```yaml
 parameters:
-  - name: speed
+  - name: Ego_S
     type: double
-    range: [10.0, 30.0]
-  - name: offset
+    range: [80.0, 120.0]
+  - name: Relative_Dist
     type: double
-    range: [-2.0, 2.0]
-  - name: behavior
-    type: categorical
-    values: [cutin, brake]
+    range: [10.0, 40.0]
+  - name: Ego_Speed
+    type: double
+    range: [8.0, 30.0]
+
+outputs:
+  Ego_S: Ego_S
+  Agent_S: Ego_S + Relative_Dist
+  Agent_Speed: Ego_Speed / 2
 ```
 
 Supported source aliases:
@@ -123,6 +132,66 @@ Supported source aliases:
 - `param_range`
 - `yaml`
 - `domain`
+
+### Output Mapping
+
+Use `outputs` in a parameter range source when the simulator cannot evaluate nested
+OpenSCENARIO expressions such as `${$Ego_S + $Relative_Dist}`. The sampler samples
+only the `parameters` entries, then maps each sample into the final simulator
+parameter interface described by `outputs`.
+
+```yaml
+parameters:
+  - name: Ego_S
+    type: double
+    range: [80.0, 120.0]
+  - name: Relative_Dist
+    type: double
+    range: [10.0, 40.0]
+  - name: Ego_Speed
+    type: double
+    range: [8.0, 30.0]
+
+outputs:
+  Ego_S: Ego_S
+  Agent_S: Ego_S + Relative_Dist
+  Agent_Speed:
+    expression: Ego_Speed / 2
+    type: double
+```
+
+Given a sampled parameter set:
+
+```yaml
+Ego_S: 100.0
+Relative_Dist: 25.0
+Ego_Speed: 20.0
+```
+
+the monitor summary records only:
+
+```yaml
+Ego_S: 100.0
+Relative_Dist: 25.0
+Ego_Speed: 20.0
+```
+
+and the simulator receives:
+
+```yaml
+Ego_S: 100.0
+Agent_S: 125.0
+Agent_Speed: 10.0
+```
+
+Output expressions may reference sampled parameters and earlier output fields.
+Allowed expression syntax is numeric constants, parameter names, `+ - * / % **`,
+parentheses, and `abs()`, `min()`, `max()`, `round()`. The aliases
+`output_parameters` and `sim_parameters` are also accepted for the same section,
+but only one output mapping key may be used.
+
+The `native` / `openscenario_native` sampler keeps the original OpenSCENARIO
+parameter distribution behavior and ignores output mappings.
 
 ### Explicit Samples
 

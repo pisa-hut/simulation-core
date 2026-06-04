@@ -12,9 +12,10 @@ class ExplicitSampler(Sampler):
         self,
         parameter_space: ParameterSpace,
         past_results: Iterable[TestResult] | None = None,
+        output_parameters: Any = None,
         **_: Any,
     ):
-        super().__init__(parameter_space)
+        super().__init__(parameter_space, output_parameters=output_parameters)
         samples = parameter_space.metadata.get(EXPLICIT_SAMPLES_METADATA_KEY)
         if not isinstance(samples, tuple) or not all(
             isinstance(sample, Sample) for sample in samples
@@ -33,7 +34,7 @@ class ExplicitSampler(Sampler):
 
         sample = self._samples[self._index]
         self._index += 1
-        return sample
+        return self.prepare_sample(sample)
 
     def total_samples(self) -> int:
         return len(self._samples)

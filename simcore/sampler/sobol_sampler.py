@@ -14,9 +14,10 @@ class SobolSampler(Sampler):
         past_results: Iterable[TestResult] | None = None,
         n_samples: int | None = None,
         skip: int = 1,
+        output_parameters: Any = None,
         **_: Any,
     ):
-        super().__init__(parameter_space)
+        super().__init__(parameter_space, output_parameters=output_parameters)
         self._n_samples = (
             n_samples if n_samples is not None else default_sample_count(parameter_space)
         )
@@ -33,7 +34,7 @@ class SobolSampler(Sampler):
         if self._index < self._n_samples:
             params = self._samples[self._index]
             self._index += 1
-            return Sample(params=params)
+            return self.prepare_sample(Sample(params=params))
 
         return None
 

@@ -14,3 +14,10 @@ parameters:
   - name: behavior
     type: categorical
     values: [keep_lane, cut_in, brake]
+
+# Optional simulator output mapping. When present, the runner samples only
+# parameters above, records those sampled values in summaries, and sends this
+# mapped interface to the simulator.
+# outputs:
+#   ego_speed: ego_speed
+#   agent0_speed: ego_speed / 2

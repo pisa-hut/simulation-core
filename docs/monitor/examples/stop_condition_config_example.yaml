@@ -20,6 +20,7 @@
 #   actor_id_a: 0
 #   actor_id_b: 1
 #   threshold_s: 1.0
+#   lateral_threshold_m: 2.0
 
 - type: reach_target_position
   name: ego_reaches_goal

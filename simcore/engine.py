@@ -24,9 +24,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _sample_output_and_params(sample: Sample, index: int) -> tuple[str, dict]:
+def _sample_output_and_params(sample: Sample, index: int) -> tuple[str, dict, dict]:
     sample_id = sample.id if sample.id is not None else str(index)
-    return f"iteration_{sample_id}", dict(sample.params)
+    return f"iteration_{sample_id}", dict(sample.params), sample.sim_params
 
 
 def _scenario_source_base_path(scenario_path: str | Path | None) -> Path | None:
@@ -251,16 +251,18 @@ class SimulationEngine:
             if sample is None:
                 logger.debug("Parameter sampling completed.")
                 break
-            output_related, params = _sample_output_and_params(sample, i + 1)
+            output_related, params, sim_params = _sample_output_and_params(sample, i + 1)
 
             logger.info(
                 f"====================== Sampling iteration {i + 1}/{progress_total} ======================"
             )
 
             logger.info(f"Sampled parameters: {json.dumps(params)}")
+            if sim_params != params:
+                logger.info(f"Simulator parameters: {json.dumps(sim_params)}")
 
             try:
-                self.concrete_wrapper(output_related, self.sps, params)
+                self.concrete_wrapper(output_related, self.sps, params, sim_params=sim_params)
             except ScenarioExecutionError as e:
                 if e.skip_concrete:
                     logger.warning(
@@ -293,7 +295,7 @@ class SimulationEngine:
                 raise ValueError(
                     f"runtime.permutation={permutation} is out of range; sampler ended at {index - 1}"
                 )
-        output_related, params = _sample_output_and_params(sample, permutation)
+        output_related, params, sim_params = _sample_output_and_params(sample, permutation)
 
         logger.info(
             "====================== Sampling iteration %s/%s ======================",
@@ -301,13 +303,17 @@ class SimulationEngine:
             total or "unknown",
         )
         logger.info(f"Sampled parameters: {json.dumps(params)}")
-        self.concrete_wrapper(output_related, self.sps, params)
+        if sim_params != params:
+            logger.info(f"Simulator parameters: {json.dumps(sim_params)}")
+        self.concrete_wrapper(output_related, self.sps, params, sim_params=sim_params)
 
     def concrete_wrapper(
         self,
         output_related: str,
         sps: ScenarioPack,
         params: dict[str, Any] | None = None,
+        *,
+        sim_params: dict[str, Any] | None = None,
     ) -> None:
         last_status = self.monitor.last_summary_status(output_related)
         if last_status in {"skipped", "abort"}:
@@ -334,7 +340,7 @@ class SimulationEngine:
             return
 
         try:
-            self.run_concrete(output_related, sps, params)
+            self.run_concrete(output_related, sps, params, sim_params=sim_params)
         except ScenarioExecutionError as e:
             if e.skip_concrete:
                 logger.warning(
@@ -363,6 +369,8 @@ class SimulationEngine:
         output_related: str,
         sps: ScenarioPack,
         params: dict[str, Any] | None = None,
+        *,
+        sim_params: dict[str, Any] | None = None,
     ) -> None:
         """
         Run a single concrete scenario with the given parameters.
@@ -386,7 +394,11 @@ class SimulationEngine:
                 return
 
             logger.debug("Resetting simulator...")
-            runtime_frame = self.sim.reset(output_related, sps, params)
+            runtime_frame = self.sim.reset(
+                output_related,
+                sps,
+                sim_params if sim_params is not None else params,
+            )
             raw_obs = runtime_frame.objects if runtime_frame.objects else []
 
             logger.debug("Resetting AV...")

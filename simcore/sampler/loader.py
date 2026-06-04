@@ -90,6 +90,11 @@ def load_sampler_spec(
         raise ValueError(
             "Sampler config must not contain module_path; runner uses built-in samplers"
         )
+    if "derived_parameters" in effective:
+        raise ValueError(
+            "Sampler config must not contain derived_parameters; define simulator outputs "
+            "in the parameter range source using an 'outputs' section"
+        )
     if "source" in effective and not isinstance(effective["source"], dict):
         raise ValueError("sampler config source must be a mapping/object with source.path")
     if name in NATIVE_SAMPLER_NAMES:
@@ -237,7 +242,6 @@ def create_sampler(
 
     sampler_class = import_from_path(module_path)
     config = {key: value for key, value in sampler_spec.items() if key not in SAMPLER_CONTROL_KEYS}
-
     kwargs = _constructor_kwargs(
         sampler_class,
         {

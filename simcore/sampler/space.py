@@ -8,6 +8,8 @@ from typing import Any
 
 ParamDict = dict[str, Any]
 TestResult = dict[str, Any]
+OUTPUT_PARAMETERS_METADATA_KEY = "output_parameters"
+SIM_PARAMS_METADATA_KEY = "sim_params"
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,13 @@ class Sample:
     params: ParamDict
     id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def sim_params(self) -> ParamDict:
+        params = self.metadata.get(SIM_PARAMS_METADATA_KEY)
+        if isinstance(params, dict):
+            return dict(params)
+        return dict(self.params)
 
 
 @dataclass(frozen=True)

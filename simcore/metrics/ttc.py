@@ -79,11 +79,7 @@ def compute_pair_ttc(
         ):
             ttc_s = None
         else:
-            ttc_s = (
-                longitudinal_distance_m / closing_speed_mps
-                if closing_speed_mps > 0
-                else None
-            )
+            ttc_s = longitudinal_distance_m / closing_speed_mps if closing_speed_mps > 0 else None
 
         return PairTTCResult(
             actor_id_a=actor_id_a,

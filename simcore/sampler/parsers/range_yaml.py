@@ -54,13 +54,13 @@ def parse_parameter_range_dict(data: dict[str, Any]) -> ParameterSpace:
 
 def _raw_output_parameters(data: dict[str, Any]) -> Any:
     configured_keys = [
-        key
-        for key in ("outputs", "output_parameters", "sim_parameters")
-        if key in data
+        key for key in ("outputs", "output_parameters", "sim_parameters") if key in data
     ]
     if len(configured_keys) > 1:
         keys = ", ".join(configured_keys)
-        raise ValueError(f"Parameter range config must use only one output mapping key; got: {keys}")
+        raise ValueError(
+            f"Parameter range config must use only one output mapping key; got: {keys}"
+        )
     if not configured_keys:
         return None
     return data[configured_keys[0]]

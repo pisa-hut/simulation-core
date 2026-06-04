@@ -61,6 +61,8 @@ def apply_output_parameters(
         "output_parameters": tuple(spec.name for spec in specs),
     }
     return Sample(id=sample.id, params=sample_params, metadata=metadata)
+
+
 def _parse_mapping_entry(name: Any, config: Any) -> OutputParameterSpec:
     if isinstance(config, str):
         return OutputParameterSpec(name=str(name), expression=config)
@@ -72,9 +74,7 @@ def _parse_mapping_entry(name: Any, config: Any) -> OutputParameterSpec:
             expression=expression,
             param_type=str(param_type),
         )
-    raise ValueError(
-        f"Derived parameter {name!r} must be an expression string or mapping/object"
-    )
+    raise ValueError(f"Derived parameter {name!r} must be an expression string or mapping/object")
 
 
 def _parse_list_entry(entry: Any, index: int) -> OutputParameterSpec:

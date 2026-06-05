@@ -8,6 +8,8 @@
   outcome: Fail
   actor_id_a: 0
   max_buffer_size: 1
+  # Optional simulation-time delay before reporting the stop.
+  # delay_ms: 500
 
 - type: timeout
   name: timeout_45s

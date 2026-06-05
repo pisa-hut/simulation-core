@@ -136,6 +136,27 @@ Logical nodes:
 
 When a condition stops the scenario, the summary receives `run.stop_condition`, `run.test_outcome`, and detailed `run.stop_reason`.
 
+## Stop Condition Delay
+
+Every stop condition supports an optional simulation-time delay:
+
+```yaml
+- type: collision
+  name: delayed_collision_guard
+  outcome: Fail
+  actor_id_a: 0
+  delay_ms: 500
+```
+
+Supported delay keys are `delay_ms`, `delay_s`, and `delay_ns`; use only one per
+condition. When the raw condition first triggers, the monitor latches that event
+and waits for the configured amount of simulation time before reporting the stop.
+The original trigger does not need to remain true during the delay. This is useful
+for instantaneous events such as collisions as well as sustained threshold checks.
+
+The final `run.stop_reason` includes the configured delay, the simulation time when
+the delay started, the time when it completed, and the original trigger detail.
+
 ## Pair TTC
 
 `pair_ttc` uses actor A as the ego/reference actor. By default it computes

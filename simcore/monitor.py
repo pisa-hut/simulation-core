@@ -79,6 +79,7 @@ class Monitor:
             "sps": sps,
             "position_parser": position_parser,
             "params": self.params,
+            "current_sim_time_ns": 0,
         }
         self.current_output_related = ""
         self._concrete_outcomes: list[ConcreteOutcome] = []
@@ -216,6 +217,7 @@ class Monitor:
             self.summary_recorders = build_summary_recorders(summary_recorder_configs)
 
     def update(self, sim_time_ns: int, runtime_frame: Any, control: Any) -> None:
+        self.condition_context["current_sim_time_ns"] = int(sim_time_ns)
         sample = MonitorSample(
             step_index=self.step_index,
             sim_time_ns=sim_time_ns,
@@ -240,6 +242,7 @@ class Monitor:
         self.step_index += 1
 
     def should_stop(self, check_external_quit: bool = True) -> bool:
+        self.condition_context["current_sim_time_ns"] = int(self.final_sim_time_ns)
         if self.root:
             result = self.root.evaluate()
             if result.code == ConditionCode.TRIGGERED:
@@ -290,11 +293,13 @@ class Monitor:
         self.current_output_related = output_related
         self.params = dict(params or {})
         self.condition_context["params"] = self.params
+        self.condition_context["current_sim_time_ns"] = 0
         self.wall_start_time_s = monotonic()
         self.overwrite_summary = overwrite_summary
 
         if self.root:
             self.root.reset()
+            self._reset_condition_delays(self.root)
         for recorder in self.frame_recorders:
             recorder.reset()
         for recorder in self.table_recorders:
@@ -550,6 +555,11 @@ class Monitor:
         if self.log_manager:
             self.log_manager.close()
             self.log_manager = None
+
+    def _reset_condition_delays(self, node: ConditionNode) -> None:
+        node.reset_delay()
+        for child in getattr(node, "children", []):
+            self._reset_condition_delays(child)
 
     def _write_exec_summary(self, result: ExecResult) -> None:
         fields = (

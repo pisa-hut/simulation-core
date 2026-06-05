@@ -717,6 +717,73 @@ logging:
     assert rows[0]["run.stop_condition"] == "invalid_speed_gap"
 
 
+def test_monitor_stop_condition_delay_records_clear_summary_reason(tmp_path: Path) -> None:
+    logging_config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    include_basic: true
+""",
+        name="monitor.yaml",
+    )
+    stop_config_path = write_config(
+        tmp_path,
+        """
+- type: kinematic_threshold
+  name: delayed_speed_guard
+  outcome: Fail
+  actor_id: 0
+  metric: speed
+  rule: gt
+  value: 5.0
+  delay_ms: 100
+""",
+        name="stop_conditions.yaml",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(logging_config_path),
+        stop_condition_config_path=str(stop_config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.update(0, SimpleNamespace(objects=[make_object(0, 0.0, 0.0, speed=10.0)]), None)
+
+    assert monitor.should_stop(check_external_quit=False) is False
+
+    monitor.update(
+        50_000_000,
+        SimpleNamespace(objects=[make_object(0, 0.0, 0.0, speed=0.0)]),
+        None,
+    )
+
+    assert monitor.should_stop(check_external_quit=False) is False
+
+    monitor.update(
+        100_000_000,
+        SimpleNamespace(objects=[make_object(0, 0.0, 0.0, speed=0.0)]),
+        None,
+    )
+
+    assert monitor.should_stop(check_external_quit=False) is True
+    assert monitor.stop_condition_name == "delayed_speed_guard"
+    assert monitor.test_outcome == "fail"
+    assert "Delay satisfied after 100.000 ms" in monitor.stop_reason
+    assert "Original trigger:" in monitor.stop_reason
+
+    monitor.finalize(status="finished", reason=monitor.stop_reason)
+
+    rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
+    assert rows[0]["run.stop_condition"] == "delayed_speed_guard"
+    assert rows[0]["run.test_outcome"] == "fail"
+    assert "Delay satisfied after 100.000 ms" in rows[0]["run.stop_reason"]
+
+
 def test_monitor_stop_reason_includes_av_should_quit_message(tmp_path: Path) -> None:
     config_path = write_config(
         tmp_path,

@@ -134,3 +134,54 @@ def test_collision_condition_supports_legacy_actor_id_alias() -> None:
     result = condition.evaluate()
 
     assert result.code == ConditionCode.TRIGGERED
+
+
+def test_collision_condition_delay_latches_original_trigger_until_delay_expires() -> None:
+    context = {"current_sim_time_ns": 0}
+    condition = CollisionCondition(
+        {
+            "type": "collision",
+            "name": "collision_guard",
+            "delay_ms": 100,
+            "_context": context,
+        }
+    )
+
+    condition.put((0, make_runtime_frame(FakeCollision(occurred=True, actor_a=2, actor_b=7)), None))
+    result = condition.evaluate()
+
+    assert result.code == ConditionCode.NOT_TRIGGERED
+    assert "Delay pending" in result.detail
+
+    context["current_sim_time_ns"] = 50_000_000
+    condition.put((50_000_000, make_runtime_frame(), None))
+    result = condition.evaluate()
+
+    assert result.code == ConditionCode.NOT_TRIGGERED
+    assert "remaining=50.000 ms" in result.detail
+
+    context["current_sim_time_ns"] = 100_000_000
+    result = condition.evaluate()
+
+    assert result.code == ConditionCode.TRIGGERED
+    assert "Delay satisfied after 100.000 ms" in result.detail
+    assert "Original trigger: Collision detected between actor 2 and actor 7" in result.detail
+
+
+def test_condition_reset_clears_pending_delay() -> None:
+    context = {"current_sim_time_ns": 0}
+    condition = CollisionCondition(
+        {
+            "type": "collision",
+            "delay_ms": 100,
+            "_context": context,
+        }
+    )
+
+    condition.put((0, make_runtime_frame(FakeCollision(occurred=True, actor_a=2, actor_b=7)), None))
+    assert condition.evaluate().code == ConditionCode.NOT_TRIGGERED
+
+    condition.reset()
+    context["current_sim_time_ns"] = 100_000_000
+
+    assert condition.evaluate().code == ConditionCode.NOT_EVALUATED

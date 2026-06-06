@@ -327,8 +327,58 @@ Summary recorders update during the scenario and write one merged row at finaliz
 | `basic_summary` | `status`, `test_outcome`, `stop_condition`, `stop_reason`, `total_steps`, `final_sim_time_ms`, `wall_time_ms`, `job_id`, `params` |
 | `min_ttc` | `min_ttc_s` |
 | `max_speed` | `max_speed_mps` |
+| `numeric_summary` | Configurable `min`, `max`, `mean`, `std`, `count`, and optional extremum locations |
 
 `basic_summary` is included by default as `run.*` unless `include_basic: false`.
+
+### Numeric Summary
+
+`numeric_summary` aggregates one scalar source over all simulation steps. One
+recorder may request multiple aggregations:
+
+```yaml
+logging:
+  summary:
+    recorders:
+      - type: numeric_summary
+        name: ego_deceleration
+        source:
+          type: kinematic
+          actor_id: 0
+          field: acceleration
+        transforms: [negate, positive_part]
+        aggregations: [max, mean, std]
+        include_extrema_location: true
+
+      - type: numeric_summary
+        name: ego_to_agent_1_ttc
+        source:
+          type: pair_ttc
+          field: ttc_s
+          actor_id_a: 0
+          actor_id_b: 1
+          mode: longitudinal
+          lateral_threshold_m: 2.0
+        aggregations: [min, mean]
+```
+
+Available sources:
+
+| Source | Required parameters | Fields |
+| --- | --- | --- |
+| `kinematic` | `actor_id`, `field` | `x`, `y`, `z`, `yaw`, `speed`, `acceleration`, `yaw_rate`, `yaw_acceleration` |
+| `pair_ttc` | `actor_id_a`, `actor_id_b`, `field` | `ttc_s`, `distance_m`, `closing_speed_mps`, `longitudinal_distance_m`, `lateral_distance_m` |
+| `relative_position` | `source_actor_id`, `target_actor_id`, `field` | `relative_angle_deg`, `sector`, `distance_m`, `source_x`, `source_y`, `target_x`, `target_y`, `source_yaw_rad` |
+
+`acc` is accepted as an alias for the canonical `acceleration` field. Available
+transforms are `negate`, `abs`, and `positive_part`; they run in configured
+order. Available aggregations are `min`, `max`, `mean`, and population standard
+deviation `std`. Every recorder also outputs `count`.
+
+When `include_extrema_location: true`, selected `min` and `max` aggregations add
+`<aggregation>_step_index` and `<aggregation>_sim_time_ms`. Ties retain the first
+location. Missing actors, unavailable metric results, nulls, NaN, and infinity
+are skipped. With no valid samples, `count` is zero and other fields are empty.
 
 ## Built-in Metrics
 
@@ -337,6 +387,7 @@ Shared metric code lives in `simcore.metrics`.
 Currently available:
 
 - `compute_pair_ttc(objects, actor_id_a, actor_id_b)`
+- `compute_relative_position(objects, source_actor_id, target_actor_id)`
 
 This is used by:
 
@@ -352,6 +403,11 @@ This is used by:
 4. Register it in `simcore/conditions/condition_registry.py`.
 
 Use shared calculations from `simcore.metrics` when the same value is needed by conditions and recorders.
+
+To expose a new scalar metric to `numeric_summary`, add a `NumericValueSource`
+adapter in `summary_recorders/numeric_sources.py`, declare its allowed result
+fields, validate metric-specific parameters in its constructor, and register it
+in `SOURCE_BUILDERS`. Aggregation and CSV behavior then require no new recorder.
 
 ## Extending Logging
 

@@ -4,6 +4,9 @@ SUMMARY_RECORDER_REGISTRY = {
     "basic_summary": "simcore.monitoring.summary_recorders.basic_summary:BasicSummaryRecorder",
     "max_speed": "simcore.monitoring.summary_recorders.max_speed:MaxSpeedSummaryRecorder",
     "min_ttc": "simcore.monitoring.summary_recorders.min_ttc:MinTTCSummaryRecorder",
+    "numeric_summary": (
+        "simcore.monitoring.summary_recorders.numeric_summary:NumericSummaryRecorder"
+    ),
 }
 
 
@@ -32,4 +35,11 @@ def build_summary_recorders(configs: list[dict]):
             raise ValueError(f"Summary recorder config must have 'type', got: {config}")
         recorder_class = load_summary_recorder_class(str(config["type"]).lower())
         recorders.append(recorder_class(config))
+    names = [recorder.name for recorder in recorders]
+    duplicate_names = sorted({name for name in names if names.count(name) > 1})
+    if duplicate_names:
+        raise ValueError(
+            "Summary recorder names must be unique; duplicate(s): "
+            + ", ".join(duplicate_names)
+        )
     return recorders

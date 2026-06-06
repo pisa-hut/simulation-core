@@ -6,7 +6,7 @@ from .relative_position import (
     compute_relative_position,
 )
 from .rules import NumericRule
-from .ttc import PairTTCResult, compute_pair_ttc
+from .ttc import PairTTCOptions, PairTTCResult, compute_pair_ttc, parse_pair_ttc_options
 
 __all__ = [
     "find_actor",
@@ -19,6 +19,8 @@ __all__ = [
     "RelativePositionResult",
     "RelativePositionSelector",
     "compute_relative_position",
+    "PairTTCOptions",
     "PairTTCResult",
     "compute_pair_ttc",
+    "parse_pair_ttc_options",
 ]

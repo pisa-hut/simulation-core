@@ -12,6 +12,12 @@ TTC_MODES = {"longitudinal", "radial"}
 
 
 @dataclass(frozen=True)
+class PairTTCOptions:
+    mode: str = DEFAULT_TTC_MODE
+    lateral_threshold_m: float | None = DEFAULT_LATERAL_THRESHOLD_M
+
+
+@dataclass(frozen=True)
 class PairTTCResult:
     actor_id_a: int
     actor_id_b: int
@@ -126,3 +132,15 @@ def normalize_ttc_mode(mode: str | None) -> str:
         allowed = ", ".join(sorted(TTC_MODES))
         raise ValueError(f"Unsupported TTC mode {mode!r}; expected one of: {allowed}")
     return normalized
+
+
+def parse_pair_ttc_options(config: dict, *, owner: str = "pair_ttc") -> PairTTCOptions:
+    mode = normalize_ttc_mode(config.get("mode", config.get("ttc_mode", DEFAULT_TTC_MODE)))
+    raw_threshold = config.get("lateral_threshold_m", DEFAULT_LATERAL_THRESHOLD_M)
+    if raw_threshold is None:
+        lateral_threshold_m = None
+    else:
+        lateral_threshold_m = float(raw_threshold)
+        if lateral_threshold_m < 0:
+            raise ValueError(f"{owner} lateral_threshold_m must be >= 0")
+    return PairTTCOptions(mode=mode, lateral_threshold_m=lateral_threshold_m)

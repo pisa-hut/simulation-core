@@ -53,3 +53,23 @@ logging:
       - type: max_speed
         name: ego
         actor_id: 0
+
+      # Generic scalar aggregation. This records positive deceleration magnitude.
+      - type: numeric_summary
+        name: ego_deceleration
+        source:
+          type: kinematic
+          actor_id: 0
+          field: acceleration
+        transforms: [negate, positive_part]
+        aggregations: [max, mean, std]
+        include_extrema_location: true
+
+      - type: numeric_summary
+        name: ego_to_agent_1_distance
+        source:
+          type: relative_position
+          field: distance_m
+          source_actor_id: 0
+          target_actor_id: 1
+        aggregations: [min, max, mean]

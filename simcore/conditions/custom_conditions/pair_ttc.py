@@ -5,11 +5,9 @@ from collections import deque
 from simcore.conditions import ConditionCode, ConditionNode, EvaluationResult
 from simcore.metrics.rules import NumericRule
 from simcore.metrics.ttc import (
-    DEFAULT_LATERAL_THRESHOLD_M,
-    DEFAULT_TTC_MODE,
     PairTTCResult,
     compute_pair_ttc,
-    normalize_ttc_mode,
+    parse_pair_ttc_options,
 )
 
 
@@ -27,8 +25,9 @@ class PairTTCCondition(ConditionNode):
         if self.threshold_s < 0:
             raise ValueError("PairTTCCondition threshold_s must be >= 0")
         self.rule = NumericRule.from_config("lt", self.threshold_s, field_name="threshold_s")
-        self.mode = normalize_ttc_mode(config.get("mode", config.get("ttc_mode", DEFAULT_TTC_MODE)))
-        self.lateral_threshold_m = _parse_lateral_threshold(config)
+        options = parse_pair_ttc_options(config, owner="PairTTCCondition")
+        self.mode = options.mode
+        self.lateral_threshold_m = options.lateral_threshold_m
 
         try:
             max_buffer_size = int(config.get("max_buffer_size", 1))
@@ -113,13 +112,3 @@ class PairTTCCondition(ConditionNode):
             f"TTC between actor {result.actor_id_a} and actor {result.actor_id_b} "
             f"is above threshold: ttc={result.ttc_s:.3f}s threshold={self.threshold_s:.3f}s"
         )
-
-
-def _parse_lateral_threshold(config: dict) -> float | None:
-    raw_value = config.get("lateral_threshold_m", DEFAULT_LATERAL_THRESHOLD_M)
-    if raw_value is None:
-        return None
-    value = float(raw_value)
-    if value < 0:
-        raise ValueError("PairTTCCondition lateral_threshold_m must be >= 0")
-    return value

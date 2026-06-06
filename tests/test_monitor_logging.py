@@ -323,6 +323,106 @@ logging:
     assert rows[0]["ego.max_speed_mps"] == "4.000000"
 
 
+def test_monitor_writes_generic_numeric_summaries(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    recorders:
+      - type: numeric_summary
+        name: ego_deceleration
+        source:
+          type: kinematic
+          actor_id: 0
+          field: acceleration
+        transforms: [negate, positive_part]
+        aggregations: [max, mean, std]
+        include_extrema_location: true
+
+      - type: numeric_summary
+        name: ego_to_agent_1_ttc
+        source:
+          type: pair_ttc
+          field: ttc_s
+          actor_id_a: 0
+          actor_id_b: 1
+        aggregations: [min]
+
+      - type: numeric_summary
+        name: ego_to_agent_1_distance
+        source:
+          type: relative_position
+          field: distance_m
+          source_actor_id: 0
+          target_actor_id: 1
+        aggregations: [min, max, mean]
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.update(
+        0,
+        SimpleNamespace(
+            objects=[
+                SimpleNamespace(
+                    actor_id=0,
+                    kinematic=SimpleNamespace(
+                        x=0.0,
+                        y=0.0,
+                        yaw=0.0,
+                        speed=4.0,
+                        acceleration=-1.0,
+                    ),
+                ),
+                make_object(1, 10.0, 0.0, speed=0.0),
+            ]
+        ),
+        None,
+    )
+    monitor.update(
+        1_000_000,
+        SimpleNamespace(
+            objects=[
+                SimpleNamespace(
+                    actor_id=0,
+                    kinematic=SimpleNamespace(
+                        x=4.0,
+                        y=0.0,
+                        yaw=0.0,
+                        speed=2.0,
+                        acceleration=-3.0,
+                    ),
+                ),
+                make_object(1, 10.0, 0.0, speed=0.0),
+            ]
+        ),
+        None,
+    )
+    monitor.finalize(status="finished", reason="completed")
+
+    row = read_csv(output_base / "case_1" / "monitor" / "result.csv")[0]
+    assert row["ego_deceleration.max"] == "3.000000"
+    assert row["ego_deceleration.mean"] == "2.000000"
+    assert row["ego_deceleration.std"] == "1.000000"
+    assert row["ego_deceleration.count"] == "2"
+    assert row["ego_deceleration.max_step_index"] == "1"
+    assert row["ego_deceleration.max_sim_time_ms"] == "1.000000"
+    assert row["ego_to_agent_1_ttc.min"] == "2.500000"
+    assert row["ego_to_agent_1_ttc.count"] == "2"
+    assert row["ego_to_agent_1_distance.min"] == "6.000000"
+    assert row["ego_to_agent_1_distance.max"] == "10.000000"
+    assert row["ego_to_agent_1_distance.mean"] == "8.000000"
+
+
 def test_monitor_appends_summary_and_checks_last_finished_status(tmp_path: Path) -> None:
     config_path = write_config(
         tmp_path,

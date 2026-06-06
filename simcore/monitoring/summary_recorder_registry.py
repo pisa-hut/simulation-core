@@ -39,7 +39,6 @@ def build_summary_recorders(configs: list[dict]):
     duplicate_names = sorted({name for name in names if names.count(name) > 1})
     if duplicate_names:
         raise ValueError(
-            "Summary recorder names must be unique; duplicate(s): "
-            + ", ".join(duplicate_names)
+            "Summary recorder names must be unique; duplicate(s): " + ", ".join(duplicate_names)
         )
     return recorders

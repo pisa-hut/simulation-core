@@ -98,9 +98,7 @@ class NumericAccumulator:
 
 def normalize_aggregations(raw_aggregations: Any) -> tuple[str, ...]:
     if not isinstance(raw_aggregations, (list, tuple)) or not raw_aggregations:
-        raise ValueError(
-            "numeric summary config 'aggregations' must be a non-empty list"
-        )
+        raise ValueError("numeric summary config 'aggregations' must be a non-empty list")
     aggregations = tuple(str(value).strip().lower() for value in raw_aggregations)
     if any(not value for value in aggregations):
         raise ValueError("numeric summary aggregations must not contain empty values")

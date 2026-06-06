@@ -180,9 +180,7 @@ class ConditionNode(ABC):
 
     @staticmethod
     def _parse_delay_ns(config: dict) -> int:
-        configured_keys = [
-            key for key in ("delay_ns", "delay_ms", "delay_s") if key in config
-        ]
+        configured_keys = [key for key in ("delay_ns", "delay_ms", "delay_s") if key in config]
         if len(configured_keys) > 1:
             keys = ", ".join(configured_keys)
             raise ValueError(f"Condition delay must use only one key; got: {keys}")

@@ -16,9 +16,7 @@ class NumericSummaryRecorder(SummaryRecorder):
         self.transforms = parse_transforms(config.get("transforms"))
         include_extrema_location = config.get("include_extrema_location", False)
         if not isinstance(include_extrema_location, bool):
-            raise ValueError(
-                "numeric summary config 'include_extrema_location' must be a boolean"
-            )
+            raise ValueError("numeric summary config 'include_extrema_location' must be a boolean")
         self.accumulator = NumericAccumulator(
             config.get("aggregations"),
             include_extrema_location=include_extrema_location,

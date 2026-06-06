@@ -44,11 +44,11 @@ The simulator wrapper:
 }
 ```
 
-The AV wrapper follows the simulator wrapper lifecycle. On every loop iteration, the runner sends the simulator observation to AV and receives the next control command.
+The AV wrapper follows the simulator wrapper lifecycle. After reset, the runner records the initial simulator frame at `t=0`. On every loop iteration, the runner sends the simulator observation to AV and receives the next control command.
 
 ## Loop Data Flow
 
-Within one concrete simulation step:
+After `sim.reset()` and `av.reset()`, `monitor.update(0, ...)` records the initial runtime frame. Within each later concrete simulation step:
 
 1. `sim.step()` consumes the previous AV control command.
 2. Simulator returns the next observation/runtime frame.

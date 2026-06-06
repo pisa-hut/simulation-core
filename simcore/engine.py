@@ -408,6 +408,7 @@ class SimulationEngine:
             dt_ns = int(dt_s * 1e9)
 
             sim_time_ns = 0  # Simulation time in nanoseconds
+            self.monitor.update(sim_time_ns, runtime_frame, ctrl_for_sim)
 
             wall_start = time.monotonic()
             while True:
@@ -416,12 +417,11 @@ class SimulationEngine:
                     logger.info(f"Monitor requested to stop ({stop_reason})")
                     break
 
+                sim_time_ns += dt_ns
                 runtime_frame = self.sim.step(ctrl_for_sim, sim_time_ns)
                 raw_obs = runtime_frame.objects if runtime_frame.objects else []
                 ctrl_for_sim = self.av.step(raw_obs, sim_time_ns)
                 self.monitor.update(sim_time_ns, runtime_frame, ctrl_for_sim)
-
-                sim_time_ns += dt_ns
 
                 cur_time_s = time.monotonic()
                 time_use_s = cur_time_s - wall_start

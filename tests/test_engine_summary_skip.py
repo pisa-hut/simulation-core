@@ -19,6 +19,7 @@ class FakeMonitor:
         self.status = status
         self.retryable_failures = 0
         self.finalize_calls = []
+        self.updates = []
         self.close_result = None
         self.final_sim_time_ns = 0
         self.stop_reason = ""
@@ -41,6 +42,10 @@ class FakeMonitor:
 
     def reset(self, output_related, params=None, overwrite_summary=False):
         self.reset_call = (output_related, params, overwrite_summary)
+
+    def update(self, sim_time_ns, runtime_frame, control):
+        self.updates.append((sim_time_ns, runtime_frame, control))
+        self.final_sim_time_ns = sim_time_ns
 
     def finalize(self, status: str, reason: str = ""):
         self.finalize_calls.append((status, reason))
@@ -707,3 +712,52 @@ def test_run_concrete_logs_sampled_params_but_resets_sim_with_sim_params(
 
     assert monitor.reset_call == ("case_1", {"ego_s": 100, "relative_dist": 25}, False)
     assert sim_calls == [("case_1", {"ego_s": 100, "relative_dist": 25, "agent_s": 125})]
+
+
+def test_run_concrete_records_reset_frame_at_time_zero_before_stepping(
+    tmp_path: Path,
+) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine._dt_s = 0.1
+    engine._speedup_ratio = 0
+    monitor = FakeMonitor(status=None)
+    engine.monitor = monitor
+
+    reset_frame = SimpleNamespace(objects=["initial"])
+    step_frame = SimpleNamespace(objects=["after_step"])
+    sim_step_times = []
+    av_step_times = []
+
+    def sim_step(ctrl_for_sim, sim_time_ns):
+        sim_step_times.append((ctrl_for_sim, sim_time_ns))
+        return step_frame
+
+    def av_step(raw_obs, sim_time_ns):
+        av_step_times.append((raw_obs, sim_time_ns))
+        return "ctrl_after_step"
+
+    engine.sim = SimpleNamespace(
+        reset=lambda output_related, sps, params: reset_frame,
+        step=sim_step,
+    )
+    engine.av = SimpleNamespace(
+        reset=lambda output_related, sps, raw_obs: "ctrl_initial",
+        step=av_step,
+    )
+
+    def should_stop(check_external_quit=True):
+        if not check_external_quit:
+            return False
+        return len(monitor.updates) >= 2
+
+    monitor.should_stop = should_stop
+
+    engine.run_concrete("case_1", sps=None)
+
+    assert monitor.updates == [
+        (0, reset_frame, "ctrl_initial"),
+        (100_000_000, step_frame, "ctrl_after_step"),
+    ]
+    assert sim_step_times == [("ctrl_initial", 100_000_000)]
+    assert av_step_times == [(["after_step"], 100_000_000)]
+    assert monitor.finalize_calls == [("finished", "monitor_stop")]

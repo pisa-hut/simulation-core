@@ -110,12 +110,13 @@ For each concrete scenario, `SimulationEngine.run_concrete()` does:
 2. Check parameter-only stop conditions before simulator reset.
 3. `sim.reset(output_related, sps, params)`
 4. `av.reset(output_related, sps, raw_obs)`
-5. Loop:
+5. `monitor.update(0, runtime_frame, ctrl_for_sim)` records the reset frame at `t=0`.
+6. Loop:
    - `monitor.should_stop()`
    - `sim.step(ctrl_for_sim, sim_time_ns)`
    - `av.step(raw_obs, sim_time_ns)`
    - `monitor.update(sim_time_ns, runtime_frame, ctrl_for_sim)`
-6. `monitor.finalize(status="finished", reason=...)`
+7. `monitor.finalize(status="finished", reason=...)`
 
 If an exception occurs, the engine tries:
 

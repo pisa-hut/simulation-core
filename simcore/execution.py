@@ -39,12 +39,16 @@ class ExecResult:
 @dataclass(frozen=True)
 class ProgressUpdate:
     """Live, mid-run snapshot pushed to an optional progress callback. ``total``
-    is the sampler's reported sample count, or ``None`` when open-ended."""
+    is the sampler's reported sample count, or ``None`` when open-ended.
+    ``outcome`` is the concrete that just finalised on this tick (so consumers
+    can persist it incrementally), or ``None`` for count-only ticks such as the
+    initial "started, total=N" announcement."""
 
     total: int | None
     finished: int
     aborted: int
     skipped: int
+    outcome: ConcreteOutcome | None = None
 
 
 @dataclass(frozen=True)

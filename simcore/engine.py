@@ -79,6 +79,9 @@ class SimulationEngine:
         # Best-effort, transport-agnostic hook: simcore emits ProgressUpdate
         # snapshots; the caller decides what to do with them. None = disabled.
         self._progress_callback = progress_callback
+        # How many concrete outcomes have already been handed to the
+        # callback, so each is emitted exactly once as it finalises.
+        self._emitted_outcomes = 0
         runtime_spec = spec.get("runtime", {})
         task_spec = spec.get("task", {})
         sim_spec = spec.get("simulator", {})
@@ -569,17 +572,26 @@ class SimulationEngine:
         if self._progress_callback is None:
             return
         counts = self._logical_terminal_counts()
-        update = ProgressUpdate(
-            total=total,
-            finished=counts["finished"],
-            aborted=counts["abort"],
-            skipped=counts["skipped"],
-        )
-        # A reporting failure must never abort a simulation.
-        try:
-            self._progress_callback(update)
-        except Exception:
-            logger.exception("progress_callback failed; continuing run")
+        outcomes = self.monitor.concrete_outcomes() if self.monitor is not None else []
+        # Concretes finalised since the previous tick — usually one, zero for a
+        # count-only tick (the start announcement or a skipped-before-run
+        # concrete). Each new outcome rides its own update so a consumer can
+        # persist it incrementally; with none, emit one count-only update.
+        new_outcomes = outcomes[self._emitted_outcomes :]
+        self._emitted_outcomes = len(outcomes)
+        for outcome in new_outcomes or [None]:
+            update = ProgressUpdate(
+                total=total,
+                finished=counts["finished"],
+                aborted=counts["abort"],
+                skipped=counts["skipped"],
+                outcome=outcome,
+            )
+            # A reporting failure must never abort a simulation.
+            try:
+                self._progress_callback(update)
+            except Exception:
+                logger.exception("progress_callback failed; continuing run")
 
     def _logical_terminal_counts(self) -> dict[str, int]:
         if self.monitor is None:

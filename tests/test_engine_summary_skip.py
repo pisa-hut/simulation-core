@@ -10,7 +10,7 @@ from simcore.engine import (
     _resolve_scenario_relative_path,
     _scenario_source_base_path,
 )
-from simcore.execution import RetryHint, ScenarioExecutionError
+from simcore.execution import ConcreteOutcome, RetryHint, ScenarioExecutionError
 from simcore.sampler import Sample
 
 
@@ -254,6 +254,7 @@ def make_engine(
     engine._last_skip_reason = ""
     engine._permutation = None
     engine._progress_callback = None
+    engine._emitted_outcomes = 0
     return engine
 
 
@@ -631,6 +632,46 @@ def test_run_logical_emits_growing_progress_with_total(tmp_path: Path) -> None:
     # One emit before each concrete (0,1,2 done) plus a final emit (3 done).
     assert [(u.total, u.finished) for u in updates] == [(3, 0), (3, 1), (3, 2), (3, 3)]
     assert all(u.aborted == 0 and u.skipped == 0 for u in updates)
+    # FakeMonitor exposes no outcomes, so every tick is count-only.
+    assert all(u.outcome is None for u in updates)
+
+
+def test_run_logical_emits_each_outcome_exactly_once(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine.param_sampler = FakeSampler([{"speed": 10}, {"speed": 20}])
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = None
+    outcomes: list[ConcreteOutcome] = []
+    engine.monitor.concrete_outcomes = lambda: list(outcomes)
+    updates = []
+    engine._progress_callback = updates.append
+
+    def concrete_wrapper(output_related, sps, params=None, *, sim_params=None):
+        engine.monitor.current_summary_counts["finished"] += 1
+        outcomes.append(
+            ConcreteOutcome(
+                concrete_key=output_related,
+                status="finished",
+                test_outcome="success",
+                reason="",
+                stop_condition="",
+                params=params,
+                final_sim_time_ms=0.0,
+                wall_time_ms=0.0,
+                total_steps=0,
+            )
+        )
+
+    engine.concrete_wrapper = concrete_wrapper
+
+    engine.run_logical()
+
+    # Each finalised concrete is handed to the callback exactly once.
+    emitted = [u.outcome.concrete_key for u in updates if u.outcome is not None]
+    assert emitted == ["iteration_1", "iteration_2"]
+    # The leading tick is the count-only "started, total=N" announcement.
+    assert updates[0].outcome is None and updates[0].finished == 0
 
 
 def test_run_logical_emits_total_none_for_open_ended_sampler(tmp_path: Path) -> None:

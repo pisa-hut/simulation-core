@@ -1,13 +1,19 @@
 import json
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from rich.logging import RichHandler
 
 from simcore.av_wrapper import AVWrapper
-from simcore.execution import ExecResult, RetryHint, ScenarioExecutionError
+from simcore.execution import (
+    ExecResult,
+    ProgressUpdate,
+    RetryHint,
+    ScenarioExecutionError,
+)
 from simcore.monitor import Monitor
 from simcore.sampler import Sample, create_sampler, load_parameter_space
 from simcore.sampler.loader import load_sampler_spec, resolve_sampler_source
@@ -65,7 +71,14 @@ def _resolve_scenario_relative_path(
 
 
 class SimulationEngine:
-    def __init__(self, spec: dict[str, Any]):
+    def __init__(
+        self,
+        spec: dict[str, Any],
+        progress_callback: Callable[[ProgressUpdate], None] | None = None,
+    ):
+        # Best-effort, transport-agnostic hook: simcore emits ProgressUpdate
+        # snapshots; the caller decides what to do with them. None = disabled.
+        self._progress_callback = progress_callback
         runtime_spec = spec.get("runtime", {})
         task_spec = spec.get("task", {})
         sim_spec = spec.get("simulator", {})
@@ -204,7 +217,9 @@ class SimulationEngine:
                 self.run_logical()
             else:
                 logger.info("Running single concrete scenario without parameter sampling.")
+                self._emit_progress(1)
                 self.concrete_wrapper("concrete", self.sps)
+                self._emit_progress(1)
         except ScenarioExecutionError as e:
             logger.error(f"Error during scenario execution: {e}")
             result = ExecResult(
@@ -251,6 +266,9 @@ class SimulationEngine:
             if sample is None:
                 logger.debug("Parameter sampling completed.")
                 break
+            # Snapshot before running concrete i+1: counts reflect the i already
+            # done, so the i==0 emit doubles as the "started, total=N" event.
+            self._emit_progress(total)
             output_related, params, sim_params = _sample_output_and_params(sample, i + 1)
 
             logger.info(
@@ -278,6 +296,7 @@ class SimulationEngine:
                 raise
             i += 1
 
+        self._emit_progress(total)
         logger.info("Completed all parameter combinations.")
 
     def _run_logical_permutation(self, total: int | None) -> None:
@@ -305,7 +324,9 @@ class SimulationEngine:
         logger.info(f"Sampled parameters: {json.dumps(params)}")
         if sim_params != params:
             logger.info(f"Simulator parameters: {json.dumps(sim_params)}")
+        self._emit_progress(total)
         self.concrete_wrapper(output_related, self.sps, params, sim_params=sim_params)
+        self._emit_progress(total)
 
     def concrete_wrapper(
         self,
@@ -543,6 +564,22 @@ class SimulationEngine:
             self.monitor.finalize(status="abort", reason=reason)
         except Exception:
             logger.exception("monitor.finalize() failed while recording aborted concrete")
+
+    def _emit_progress(self, total: int | None) -> None:
+        if self._progress_callback is None:
+            return
+        counts = self._logical_terminal_counts()
+        update = ProgressUpdate(
+            total=total,
+            finished=counts["finished"],
+            aborted=counts["abort"],
+            skipped=counts["skipped"],
+        )
+        # A reporting failure must never abort a simulation.
+        try:
+            self._progress_callback(update)
+        except Exception:
+            logger.exception("progress_callback failed; continuing run")
 
     def _logical_terminal_counts(self) -> dict[str, int]:
         if self.monitor is None:

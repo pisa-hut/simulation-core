@@ -37,6 +37,17 @@ class ExecResult:
 
 
 @dataclass(frozen=True)
+class ProgressUpdate:
+    """Live, mid-run snapshot pushed to an optional progress callback. ``total``
+    is the sampler's reported sample count, or ``None`` when open-ended."""
+
+    total: int | None
+    finished: int
+    aborted: int
+    skipped: int
+
+
+@dataclass(frozen=True)
 class ShouldQuitResult:
     should_quit: bool
     message: str = ""

@@ -253,6 +253,7 @@ def make_engine(
     engine.job_id = "test"
     engine._last_skip_reason = ""
     engine._permutation = None
+    engine._progress_callback = None
     return engine
 
 
@@ -609,6 +610,58 @@ def test_run_logical_permutation_uses_explicit_sample_id(tmp_path: Path) -> None
     engine.run_logical()
 
     assert calls == [("iteration_case_b", {"speed": 20})]
+
+
+def test_run_logical_emits_growing_progress_with_total(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    engine.param_sampler = FakeSampler([{"speed": 10}, {"speed": 20}, {"speed": 30}])
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = None
+    updates = []
+    engine._progress_callback = updates.append
+
+    def concrete_wrapper(output_related, sps, params=None, *, sim_params=None):
+        engine.monitor.current_summary_counts["finished"] += 1
+
+    engine.concrete_wrapper = concrete_wrapper
+
+    engine.run_logical()
+
+    # One emit before each concrete (0,1,2 done) plus a final emit (3 done).
+    assert [(u.total, u.finished) for u in updates] == [(3, 0), (3, 1), (3, 2), (3, 3)]
+    assert all(u.aborted == 0 and u.skipped == 0 for u in updates)
+
+
+def test_run_logical_emits_total_none_for_open_ended_sampler(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    sampler = FakeSampler([{"speed": 10}])
+    sampler.total_samples = lambda: None
+    engine.param_sampler = sampler
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = None
+    updates = []
+    engine._progress_callback = updates.append
+
+    engine.concrete_wrapper = lambda output_related, sps, params=None, *, sim_params=None: None
+
+    engine.run_logical()
+
+    assert updates
+    assert all(u.total is None for u in updates)
+
+
+def test_emit_progress_swallows_callback_errors(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+
+    def boom(update):
+        raise RuntimeError("reporting backend down")
+
+    engine._progress_callback = boom
+
+    # Must not raise — telemetry failure cannot abort a run.
+    engine._emit_progress(5)
 
 
 def test_run_logical_rejects_out_of_range_permutation(tmp_path: Path) -> None:

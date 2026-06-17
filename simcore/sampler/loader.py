@@ -14,12 +14,19 @@ from simcore.sampler.space import ParameterSpace
 from simcore.utils.util import get_cfg
 
 BUILTIN_SAMPLERS = {
+    "adaptive_boundary": (
+        "simcore.sampler.feedback_boundary_sampler:FeedbackBoundarySampler"
+    ),
     "explicit": "simcore.sampler.explicit_sampler:ExplicitSampler",
+    "feedback_boundary": (
+        "simcore.sampler.feedback_boundary_sampler:FeedbackBoundarySampler"
+    ),
     "grid": "simcore.sampler.grid_search_sampler:GridSearchSampler",
     "grid_search": "simcore.sampler.grid_search_sampler:GridSearchSampler",
     "lhs": "simcore.sampler.lhs_sampler:LHSSampler",
     "native": "simcore.sampler.openscenario_native_sampler:OpenScenarioNativeSampler",
     "openscenario_native": "simcore.sampler.openscenario_native_sampler:OpenScenarioNativeSampler",
+    "random": "simcore.sampler.random_sampler:RandomSampler",
     "sobol": "simcore.sampler.sobol_sampler:SobolSampler",
 }
 NATIVE_SAMPLER_NAMES = {"native", "openscenario_native"}

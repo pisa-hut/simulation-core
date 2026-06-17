@@ -45,6 +45,10 @@ logging:
     output: result.csv
     include_basic: true
     recorders:
+      - type: collision
+        name: ego_collision
+        actor_id_a: 0
+
       - type: min_ttc
         name: ego_to_agent_1
         actor_id_a: 0

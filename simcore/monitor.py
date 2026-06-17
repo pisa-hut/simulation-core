@@ -332,6 +332,13 @@ class Monitor:
         effective_stop_condition = (
             stop_condition if stop_condition is not None else self.stop_condition_name
         )
+        summary_row = self._summary_row(
+            status=effective_status,
+            reason=reason,
+            test_outcome=effective_test_outcome,
+            stop_condition=effective_stop_condition,
+            wall_time_ms=wall_time_ms,
+        )
         self.current_summary_counts[effective_status] += 1
         self.current_test_outcome_counts[effective_test_outcome] += 1
         self._record_concrete_outcome(
@@ -340,6 +347,7 @@ class Monitor:
             effective_stop_condition,
             reason,
             wall_time_ms,
+            summary_row or {},
         )
         self.current_sim_time_ms += self.final_sim_time_ns / 1e6
         self.current_wall_time_ms += wall_time_ms
@@ -351,13 +359,6 @@ class Monitor:
                 for row in recorder.finalize():
                     self.log_manager.write(row.stream, row.row)
 
-            summary_row = self._summary_row(
-                status=effective_status,
-                reason=reason,
-                test_outcome=effective_test_outcome,
-                stop_condition=effective_stop_condition,
-                wall_time_ms=wall_time_ms,
-            )
             if summary_row is not None:
                 self.log_manager.write(SUMMARY_STREAM, summary_row)
         finally:
@@ -496,6 +497,7 @@ class Monitor:
         stop_condition: str,
         reason: str,
         wall_time_ms: float,
+        metrics: dict[str, Any],
     ) -> None:
         status_map = {
             "finished": "finished",
@@ -519,6 +521,11 @@ class Monitor:
                 final_sim_time_ms=self.final_sim_time_ns / 1e6,
                 wall_time_ms=wall_time_ms,
                 total_steps=self.step_index,
+                metrics={
+                    key: value
+                    for key, value in metrics.items()
+                    if not key.startswith("run.")
+                },
             )
         )
 

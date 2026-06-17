@@ -272,6 +272,10 @@ logging:
   enabled: true
   summary:
     recorders:
+      - type: collision
+        name: ego_collision
+        actor_id_a: 0
+
       - type: min_ttc
         name: ego_to_agent_1
         actor_id_a: 0
@@ -307,7 +311,8 @@ logging:
             objects=[
                 make_object(0, 5.0, 0.0, speed=4.0),
                 make_object(1, 10.0, 0.0, speed=0.0),
-            ]
+            ],
+            collision=[FakeCollision(occurred=True, actor_a=0, actor_b=1)],
         ),
         None,
     )
@@ -319,8 +324,15 @@ logging:
     assert rows[0]["run.total_steps"] == "2"
     assert rows[0]["run.final_sim_time_ms"] == "1.000000"
     assert rows[0]["run.params"] == json.dumps({"speed": "10", "weather": "clear"}, sort_keys=True)
+    assert rows[0]["ego_collision.collision"] == "True"
     assert rows[0]["ego_to_agent_1.min_ttc_s"] == "1.250000"
     assert rows[0]["ego.max_speed_mps"] == "4.000000"
+    outcome = monitor.concrete_outcomes()[0]
+    assert outcome.metrics == {
+        "ego_collision.collision": True,
+        "ego_to_agent_1.min_ttc_s": 1.25,
+        "ego.max_speed_mps": 4.0,
+    }
 
 
 def test_monitor_writes_generic_numeric_summaries(tmp_path: Path) -> None:

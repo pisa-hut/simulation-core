@@ -325,11 +325,15 @@ Summary recorders update during the scenario and write one merged row at finaliz
 | Type | Fields |
 | --- | --- |
 | `basic_summary` | `status`, `test_outcome`, `stop_condition`, `stop_reason`, `total_steps`, `final_sim_time_ms`, `wall_time_ms`, `job_id`, `params` |
+| `collision` | `collision` |
 | `min_ttc` | `min_ttc_s` |
 | `max_speed` | `max_speed_mps` |
 | `numeric_summary` | Configurable `min`, `max`, `mean`, `std`, `count`, and optional extremum locations |
 
 `basic_summary` is included by default as `run.*` unless `include_basic: false`.
+The `collision` recorder accepts optional `actor_id_a` and `actor_id_b` filters.
+Summary values are also retained in memory and attached to each concrete outcome,
+so feedback-aware samplers do not need to parse frame logs or CSV files.
 
 ### Numeric Summary
 

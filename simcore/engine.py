@@ -15,7 +15,7 @@ from simcore.execution import (
     ScenarioExecutionError,
 )
 from simcore.monitor import Monitor
-from simcore.sampler import Sample, create_sampler, load_parameter_space
+from simcore.sampler import Sample, SampleResult, create_sampler, load_parameter_space
 from simcore.sampler.loader import load_sampler_spec, resolve_sampler_source
 from simcore.sim_wrapper import SimWrapper
 from simcore.utils.position_parser import PositionParser
@@ -186,6 +186,13 @@ class SimulationEngine:
                 sampler_spec=sampler_spec,
                 parameter_space=parameter_space,
             )
+            if (
+                sampler_spec.get("name") in {"adaptive_boundary", "feedback_boundary"}
+                and self._permutation is not None
+            ):
+                raise ValueError(
+                    "runtime.permutation is not supported by feedback-aware samplers"
+                )
             self.max_sampler_iterations = sampler_spec.get("max_samples")
         else:
             logger.debug("No sampler source resolved; running as a single concrete scenario.")
@@ -282,9 +289,11 @@ class SimulationEngine:
             if sim_params != params:
                 logger.info(f"Simulator parameters: {json.dumps(sim_params)}")
 
+            outcome_count = len(self.monitor.concrete_outcomes())
             try:
                 self.concrete_wrapper(output_related, self.sps, params, sim_params=sim_params)
             except ScenarioExecutionError as e:
+                self._update_sampler(sample, output_related, outcome_count)
                 if e.skip_concrete:
                     logger.warning(
                         "Skipping concrete scenario at iteration %s because it is not runnable: %s",
@@ -297,6 +306,11 @@ class SimulationEngine:
                     f"Scenario execution failed at iteration {i + 1} with parameters: {params}"
                 )
                 raise
+            except Exception:
+                self._update_sampler(sample, output_related, outcome_count)
+                raise
+            else:
+                self._update_sampler(sample, output_related, outcome_count)
             i += 1
 
         self._emit_progress(total)
@@ -610,3 +624,74 @@ class SimulationEngine:
         if self.monitor is None:
             return []
         return self.monitor.concrete_outcomes()
+
+    def _update_sampler(
+        self,
+        sample: Sample,
+        output_related: str,
+        previous_outcome_count: int,
+    ) -> None:
+        update = getattr(self.param_sampler, "update", None)
+        if not callable(update):
+            return
+        result = self._sample_result(output_related, sample, previous_outcome_count)
+        update(sample, result)
+
+    def _sample_result(
+        self,
+        output_related: str,
+        sample: Sample,
+        previous_outcome_count: int,
+    ) -> SampleResult:
+        outcomes = self.monitor.concrete_outcomes()
+        if len(outcomes) > previous_outcome_count:
+            outcome = outcomes[-1]
+            return SampleResult(
+                params=dict(sample.params),
+                status=outcome.status,
+                test_outcome=outcome.test_outcome,
+                stop_condition=outcome.stop_condition,
+                reason=outcome.reason,
+                metrics=dict(outcome.metrics or {}),
+                metadata={"concrete_key": outcome.concrete_key},
+            )
+
+        summary_rows = getattr(self.monitor, "summary_rows", None)
+        if callable(summary_rows):
+            rows = summary_rows(output_related)
+            if rows:
+                row = rows[-1]
+                return SampleResult(
+                    params=dict(sample.params),
+                    status=row.get("run.status"),
+                    test_outcome=row.get("run.test_outcome"),
+                    stop_condition=row.get("run.stop_condition"),
+                    reason=row.get("run.stop_reason", ""),
+                    metrics={
+                        key: self._parse_summary_value(value)
+                        for key, value in row.items()
+                        if not key.startswith("run.")
+                    },
+                    metadata={"concrete_key": output_related, "resumed": True},
+                )
+
+        return SampleResult(
+            params=dict(sample.params),
+            status="error",
+            reason="Scenario result missing",
+            metadata={"concrete_key": output_related},
+        )
+
+    @staticmethod
+    def _parse_summary_value(value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized in {"true", "false"}:
+            return normalized == "true"
+        if normalized == "":
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            return value

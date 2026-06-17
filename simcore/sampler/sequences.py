@@ -51,6 +51,16 @@ def lhs_units(
     ]
 
 
+def random_units(
+    n_samples: int, n_dimensions: int, seed: int | None = None
+) -> list[tuple[float, ...]]:
+    rng = random.Random(seed)
+    return [
+        tuple(rng.random() for _ in range(n_dimensions))
+        for _ in range(n_samples)
+    ]
+
+
 def _trailing_zero_count(value: int) -> int:
     count = 0
     while value & 1 == 0:

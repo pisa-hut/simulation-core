@@ -1,0 +1,18 @@
+source:
+  type: param_range
+  path: range.yaml
+max_samples: null
+total_samples: 64
+initial_samples: 12
+initial_sampler: sobol
+min_ttc_threshold: 1.5
+boundary_candidate_count: 32
+opposite_neighbors: 3
+candidates_per_pair: 2
+uncertainty_weight: 0.35
+novelty_weight: 0.25
+coverage_weight: 0.4
+perturbation_scale: 0.05
+exploration_ratio: 0.2
+random_seed: 42
+duplicate_tolerance: 1.0e-6

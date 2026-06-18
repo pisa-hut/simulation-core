@@ -4,6 +4,10 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from simcore.metrics.actors import find_actor, float_attr, object_kinematic
+from simcore.metrics.pair_criticality import (
+    compute_pair_criticality,
+    parse_pair_criticality_options,
+)
 from simcore.metrics.relative_position import compute_relative_position
 from simcore.metrics.ttc import compute_pair_ttc, parse_pair_ttc_options
 from simcore.monitoring.sample import MonitorSample
@@ -25,6 +29,18 @@ PAIR_TTC_FIELDS = (
     "closing_speed_mps",
     "longitudinal_distance_m",
     "lateral_distance_m",
+)
+PAIR_CRITICALITY_FIELDS = (
+    "distance_m",
+    "longitudinal_distance_m",
+    "lateral_distance_m",
+    "closing_speed_mps",
+    "relative_longitudinal_speed_mps",
+    "relative_lateral_speed_mps",
+    "relative_longitudinal_acceleration_mps2",
+    "relative_lateral_acceleration_mps2",
+    "thw_s",
+    "drac_mps2",
 )
 RELATIVE_POSITION_FIELDS = (
     "relative_angle_deg",
@@ -69,11 +85,33 @@ class PairTTCValueSource(NumericValueSource):
         self.lateral_threshold_m = options.lateral_threshold_m
 
     def read(self, sample: MonitorSample) -> float | None:
+        runtime_frame = sample.runtime_frame
         result = compute_pair_ttc(
             _objects(sample),
             self.actor_id_a,
             self.actor_id_b,
             mode=self.mode,
+            lateral_threshold_m=self.lateral_threshold_m,
+            collisions=getattr(runtime_frame, "collision", None) or [],
+        )
+        return _result_float(result, self.field)
+
+
+class PairCriticalityValueSource(NumericValueSource):
+    def __init__(self, config: dict):
+        self.actor_id_a = _required_int(config, "actor_id_a", "pair_criticality source")
+        self.actor_id_b = _required_int(config, "actor_id_b", "pair_criticality source")
+        self.field = _required_field(config, "pair_criticality source")
+        _validate_field(self.field, PAIR_CRITICALITY_FIELDS, "pair_criticality source")
+        self.lateral_threshold_m = parse_pair_criticality_options(
+            config, owner="pair_criticality source"
+        )
+
+    def read(self, sample: MonitorSample) -> float | None:
+        result = compute_pair_criticality(
+            _objects(sample),
+            self.actor_id_a,
+            self.actor_id_b,
             lateral_threshold_m=self.lateral_threshold_m,
         )
         return _result_float(result, self.field)
@@ -105,6 +143,7 @@ class RelativePositionValueSource(NumericValueSource):
 
 SOURCE_BUILDERS = {
     "kinematic": KinematicValueSource,
+    "pair_criticality": PairCriticalityValueSource,
     "pair_ttc": PairTTCValueSource,
     "relative_position": RelativePositionValueSource,
 }

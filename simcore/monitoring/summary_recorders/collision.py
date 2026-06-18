@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from simcore.metrics.collision import collision_pair
 from simcore.monitoring.sample import MonitorSample
 
 from .base import SummaryContext, SummaryRecorder
@@ -26,7 +27,7 @@ class CollisionSummaryRecorder(SummaryRecorder):
         for collision in getattr(sample.runtime_frame, "collision", None) or []:
             if not getattr(collision, "occurred", False):
                 continue
-            pair = self._pair(collision)
+            pair = collision_pair(collision)
             if pair is not None and self._matches(pair):
                 self.collision = True
                 return
@@ -43,24 +44,6 @@ class CollisionSummaryRecorder(SummaryRecorder):
         if self.actor_id_a is None and self.actor_id_b is not None:
             return self.actor_id_b in actors
         return actors == {self.actor_id_a, self.actor_id_b}
-
-    @classmethod
-    def _pair(cls, collision) -> tuple[int, int] | None:
-        if not cls._has_field(collision, "actor_a") or not cls._has_field(
-            collision, "actor_b"
-        ):
-            return None
-        return tuple(sorted((int(collision.actor_a), int(collision.actor_b))))
-
-    @staticmethod
-    def _has_field(collision, field_name: str) -> bool:
-        has_field = getattr(collision, "HasField", None)
-        if callable(has_field):
-            try:
-                return bool(has_field(field_name))
-            except ValueError:
-                return False
-        return hasattr(collision, field_name)
 
     @staticmethod
     def _parse_actor_id(raw_value: Any) -> int | None:

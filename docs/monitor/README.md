@@ -300,6 +300,10 @@ logging:
         name: ego_to_agent_1
         actor_id_a: 0
         actor_id_b: 1
+      - type: pair_criticality
+        name: ego_to_agent_1_criticality
+        actor_id_a: 0
+        actor_id_b: 1
 ```
 
 Built-in frame recorders:
@@ -308,6 +312,7 @@ Built-in frame recorders:
 | --- | --- |
 | `ego_state` | `x`, `y`, `z`, `yaw`, `speed`, `acceleration`, `yaw_rate`, `yaw_acceleration` |
 | `pair_ttc` | `distance_m`, `closing_speed_mps`, `ttc_s`; optional `longitudinal_distance_m`, `lateral_distance_m` |
+| `pair_criticality` | `distance_m`, `longitudinal_distance_m`, `lateral_distance_m`, `closing_speed_mps`, `relative_longitudinal_speed_mps`, `relative_lateral_speed_mps`, `relative_longitudinal_acceleration_mps2`, `relative_lateral_acceleration_mps2`, `thw_s`, `drac_mps2` |
 
 ### Table Recorders
 
@@ -364,6 +369,25 @@ logging:
           mode: longitudinal
           lateral_threshold_m: 2.0
         aggregations: [min, mean]
+
+      - type: numeric_summary
+        name: ego_to_agent_1_thw
+        source:
+          type: pair_criticality
+          field: thw_s
+          actor_id_a: 0
+          actor_id_b: 1
+        aggregations: [min]
+
+      - type: numeric_summary
+        name: ego_to_agent_1_drac
+        source:
+          type: pair_criticality
+          field: drac_mps2
+          actor_id_a: 0
+          actor_id_b: 1
+          lateral_threshold_m: 2.0
+        aggregations: [max]
 ```
 
 Available sources:
@@ -372,6 +396,7 @@ Available sources:
 | --- | --- | --- |
 | `kinematic` | `actor_id`, `field` | `x`, `y`, `z`, `yaw`, `speed`, `acceleration`, `yaw_rate`, `yaw_acceleration` |
 | `pair_ttc` | `actor_id_a`, `actor_id_b`, `field` | `ttc_s`, `distance_m`, `closing_speed_mps`, `longitudinal_distance_m`, `lateral_distance_m` |
+| `pair_criticality` | `actor_id_a`, `actor_id_b`, `field` | `distance_m`, `longitudinal_distance_m`, `lateral_distance_m`, `closing_speed_mps`, `relative_longitudinal_speed_mps`, `relative_lateral_speed_mps`, `relative_longitudinal_acceleration_mps2`, `relative_lateral_acceleration_mps2`, `thw_s`, `drac_mps2` |
 | `relative_position` | `source_actor_id`, `target_actor_id`, `field` | `relative_angle_deg`, `sector`, `distance_m`, `source_x`, `source_y`, `target_x`, `target_y`, `source_yaw_rad` |
 
 `acc` is accepted as an alias for the canonical `acceleration` field. Available
@@ -391,6 +416,7 @@ Shared metric code lives in `simcore.metrics`.
 Currently available:
 
 - `compute_pair_ttc(objects, actor_id_a, actor_id_b)`
+- `compute_pair_criticality(objects, actor_id_a, actor_id_b)`
 - `compute_relative_position(objects, source_actor_id, target_actor_id)`
 
 This is used by:
@@ -398,6 +424,21 @@ This is used by:
 - `pair_ttc` frame recorder
 - `pair_ttc` stop condition
 - `min_ttc` summary recorder
+- `pair_criticality` frame recorder
+- `pair_criticality` numeric summary source
+
+`pair_ttc` is collision-aware when runtime frames include simulator collision
+events. A matching collision between `actor_id_a` and `actor_id_b` reports
+`ttc_s = 0.0` even when actor center points are not colocated.
+`pair_criticality` uses the same default lateral corridor width as longitudinal
+TTC (`lateral_threshold_m: 2.0`) for THW and DRAC. Set
+`lateral_threshold_m: null` to compute those values regardless of lateral offset.
+
+For leading-vehicle braking, useful summary metrics are minimum THW
+(`pair_criticality.thw_s`), maximum DRAC (`pair_criticality.drac_mps2`), minimum
+TTC, and maximum ego deceleration. For cut-in scenarios, useful metrics include
+minimum lateral/longitudinal gap, relative lateral speed, relative longitudinal
+speed, minimum TTC, and collision.
 
 ## Extending Conditions
 

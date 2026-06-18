@@ -2,6 +2,9 @@ import importlib
 
 FRAME_RECORDER_REGISTRY = {
     "ego_state": "simcore.monitoring.frame_recorders.ego_state:EgoStateFrameRecorder",
+    "pair_criticality": (
+        "simcore.monitoring.frame_recorders.pair_criticality:PairCriticalityFrameRecorder"
+    ),
     "pair_ttc": "simcore.monitoring.frame_recorders.pair_ttc:PairTTCFrameRecorder",
 }
 

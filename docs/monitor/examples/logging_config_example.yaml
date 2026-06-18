@@ -24,6 +24,17 @@ logging:
         actor_id_a: 0
         actor_id_b: 1
 
+      - type: pair_criticality
+        name: ego_to_agent_1_criticality
+        actor_id_a: 0
+        actor_id_b: 1
+        fields:
+          - longitudinal_distance_m
+          - lateral_distance_m
+          - relative_lateral_speed_mps
+          - thw_s
+          - drac_mps2
+
   # Variable-cardinality logs are written as separate tables.
   # `agent_states.csv` is long-table format: one row per agent per logged frame.
   tables:
@@ -77,3 +88,31 @@ logging:
           source_actor_id: 0
           target_actor_id: 1
         aggregations: [min, max, mean]
+
+      - type: numeric_summary
+        name: ego_to_agent_1_thw
+        source:
+          type: pair_criticality
+          field: thw_s
+          actor_id_a: 0
+          actor_id_b: 1
+        aggregations: [min]
+
+      - type: numeric_summary
+        name: ego_to_agent_1_drac
+        source:
+          type: pair_criticality
+          field: drac_mps2
+          actor_id_a: 0
+          actor_id_b: 1
+          lateral_threshold_m: 2.0
+        aggregations: [max]
+
+      - type: numeric_summary
+        name: cutin_lateral_speed
+        source:
+          type: pair_criticality
+          field: relative_lateral_speed_mps
+          actor_id_a: 0
+          actor_id_b: 1
+        aggregations: [min, max]

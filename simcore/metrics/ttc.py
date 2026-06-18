@@ -5,6 +5,8 @@ from math import cos, hypot, sin
 from typing import Any
 
 from simcore.metrics.actors import find_actor, float_attr, object_kinematic
+from simcore.metrics.collision import pair_collision_occurred
+from simcore.metrics.pair_criticality import velocity_xy
 
 DEFAULT_TTC_MODE = "longitudinal"
 DEFAULT_LATERAL_THRESHOLD_M = 2.0
@@ -35,11 +37,24 @@ def compute_pair_ttc(
     actor_id_b: int,
     mode: str = DEFAULT_TTC_MODE,
     lateral_threshold_m: float | None = DEFAULT_LATERAL_THRESHOLD_M,
+    collisions: Any = None,
 ) -> PairTTCResult | None:
     mode = normalize_ttc_mode(mode)
+    has_collision = pair_collision_occurred(collisions, actor_id_a, actor_id_b)
     actor_a = find_actor(objects, actor_id_a)
     actor_b = find_actor(objects, actor_id_b)
     if actor_a is None or actor_b is None:
+        if has_collision:
+            return PairTTCResult(
+                actor_id_a=actor_id_a,
+                actor_id_b=actor_id_b,
+                distance_m=None,
+                closing_speed_mps=None,
+                ttc_s=0.0,
+                longitudinal_distance_m=None,
+                lateral_distance_m=None,
+                mode=mode,
+            )
         return None
 
     kin_a = object_kinematic(actor_a)
@@ -49,6 +64,17 @@ def compute_pair_ttc(
     bx = float_attr(kin_b, "x")
     by = float_attr(kin_b, "y")
     if ax is None or ay is None or bx is None or by is None:
+        if has_collision:
+            return PairTTCResult(
+                actor_id_a=actor_id_a,
+                actor_id_b=actor_id_b,
+                distance_m=None,
+                closing_speed_mps=None,
+                ttc_s=0.0,
+                longitudinal_distance_m=None,
+                lateral_distance_m=None,
+                mode=mode,
+            )
         return None
 
     dx = bx - ax
@@ -92,7 +118,7 @@ def compute_pair_ttc(
             actor_id_b=actor_id_b,
             distance_m=distance_m,
             closing_speed_mps=closing_speed_mps,
-            ttc_s=ttc_s,
+            ttc_s=0.0 if has_collision else ttc_s,
             longitudinal_distance_m=longitudinal_distance_m,
             lateral_distance_m=lateral_distance_m,
             mode=mode,
@@ -108,22 +134,11 @@ def compute_pair_ttc(
         actor_id_b=actor_id_b,
         distance_m=distance_m,
         closing_speed_mps=closing_speed_mps,
-        ttc_s=ttc_s,
+        ttc_s=0.0 if has_collision else ttc_s,
         longitudinal_distance_m=None,
         lateral_distance_m=None,
         mode=mode,
     )
-
-
-def velocity_xy(kinematic: Any) -> tuple[float, float]:
-    vx = float_attr(kinematic, "vx")
-    vy = float_attr(kinematic, "vy")
-    if vx is not None and vy is not None:
-        return vx, vy
-
-    speed = float_attr(kinematic, "speed") or 0.0
-    yaw = float_attr(kinematic, "yaw") or 0.0
-    return speed * cos(yaw), speed * sin(yaw)
 
 
 def normalize_ttc_mode(mode: str | None) -> str:

@@ -106,6 +106,12 @@ logging:
         name: ego_to_agent_1
         actor_id_a: 0
         actor_id_b: 1
+
+      - type: pair_criticality
+        name: ego_to_agent_1_criticality
+        actor_id_a: 0
+        actor_id_b: 1
+        fields: [longitudinal_distance_m, lateral_distance_m, thw_s, drac_mps2]
 """,
     )
     output_base = tmp_path / "outputs"
@@ -150,6 +156,14 @@ logging:
         "8.000000",
     ]
     assert [row["ego_to_agent_1.ttc_s"] for row in rows] == ["10.000000", "8.000000"]
+    assert [row["ego_to_agent_1_criticality.longitudinal_distance_m"] for row in rows] == [
+        "10.000000",
+        "8.000000",
+    ]
+    assert [row["ego_to_agent_1_criticality.thw_s"] for row in rows] == [
+        "10.000000",
+        "8.000000",
+    ]
 
     summary_rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
     assert len(summary_rows) == 1
@@ -325,14 +339,69 @@ logging:
     assert rows[0]["run.final_sim_time_ms"] == "1.000000"
     assert rows[0]["run.params"] == json.dumps({"speed": "10", "weather": "clear"}, sort_keys=True)
     assert rows[0]["ego_collision.collision"] == "True"
-    assert rows[0]["ego_to_agent_1.min_ttc_s"] == "1.250000"
+    assert rows[0]["ego_to_agent_1.min_ttc_s"] == "0.000000"
     assert rows[0]["ego.max_speed_mps"] == "4.000000"
     outcome = monitor.concrete_outcomes()[0]
     assert outcome.metrics == {
         "ego_collision.collision": True,
-        "ego_to_agent_1.min_ttc_s": 1.25,
+        "ego_to_agent_1.min_ttc_s": 0.0,
         "ego.max_speed_mps": 4.0,
     }
+
+
+def test_monitor_numeric_summary_supports_pair_criticality_source(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  summary:
+    recorders:
+      - type: numeric_summary
+        name: ego_to_lead_thw
+        source:
+          type: pair_criticality
+          actor_id_a: 0
+          actor_id_b: 1
+          field: thw_s
+        aggregations: [min]
+
+      - type: numeric_summary
+        name: ego_to_lead_drac
+        source:
+          type: pair_criticality
+          actor_id_a: 0
+          actor_id_b: 1
+          field: drac_mps2
+          lateral_threshold_m: 2.0
+        aggregations: [max]
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.update(
+        0,
+        SimpleNamespace(
+            objects=[
+                make_object(0, 0.0, 0.0, speed=20.0),
+                make_object(1, 40.0, 0.0, speed=10.0),
+            ]
+        ),
+        None,
+    )
+    monitor.finalize(status="finished", reason="completed")
+
+    rows = read_csv(output_base / "case_1" / "monitor" / "result.csv")
+
+    assert rows[0]["ego_to_lead_thw.min"] == "2.000000"
+    assert rows[0]["ego_to_lead_drac.max"] == "1.250000"
 
 
 def test_monitor_writes_generic_numeric_summaries(tmp_path: Path) -> None:

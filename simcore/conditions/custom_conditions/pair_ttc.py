@@ -42,6 +42,7 @@ class PairTTCCondition(ConditionNode):
     def put(self, data):
         runtime_frame = data[1]
         objects = getattr(runtime_frame, "objects", None) or []
+        collisions = getattr(runtime_frame, "collision", None) or []
         self.buffer.append(
             compute_pair_ttc(
                 objects,
@@ -49,6 +50,7 @@ class PairTTCCondition(ConditionNode):
                 self.actor_id_b,
                 mode=self.mode,
                 lateral_threshold_m=self.lateral_threshold_m,
+                collisions=collisions,
             )
         )
 

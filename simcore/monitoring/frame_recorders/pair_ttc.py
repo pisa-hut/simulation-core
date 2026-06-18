@@ -44,12 +44,14 @@ class PairTTCFrameRecorder(FrameRecorder):
 
     def record(self, sample: MonitorSample) -> dict[str, Any]:
         objects = getattr(sample.runtime_frame, "objects", None) or []
+        collisions = getattr(sample.runtime_frame, "collision", None) or []
         result = compute_pair_ttc(
             objects,
             self.actor_id_a,
             self.actor_id_b,
             mode=self.mode,
             lateral_threshold_m=self.lateral_threshold_m,
+            collisions=collisions,
         )
         if result is None:
             return {}

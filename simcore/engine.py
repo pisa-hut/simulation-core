@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import time
@@ -13,6 +14,13 @@ from simcore.execution import (
     ProgressUpdate,
     RetryHint,
     ScenarioExecutionError,
+)
+from simcore.execution_manifest import (
+    build_execution_manifest,
+    finalize_execution_manifest,
+    load_execution_manifest,
+    validate_existing_manifest,
+    write_execution_manifest,
 )
 from simcore.monitor import Monitor
 from simcore.sampler import Sample, SampleResult, create_sampler, load_parameter_space
@@ -33,6 +41,22 @@ logger = logging.getLogger(__name__)
 def _sample_output_and_params(sample: Sample, index: int) -> tuple[str, dict, dict]:
     sample_id = sample.id if sample.id is not None else str(index)
     return f"iteration_{sample_id}", dict(sample.params), sample.sim_params
+
+
+def _sample_id_from_output(output_related: str) -> str:
+    if output_related.startswith("iteration_"):
+        return output_related.removeprefix("iteration_")
+    return output_related
+
+
+def _parameter_hash(params: dict[str, Any] | None) -> str:
+    payload = json.dumps(
+        params or {},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _scenario_source_base_path(scenario_path: str | Path | None) -> Path | None:
@@ -75,7 +99,12 @@ class SimulationEngine:
         self,
         spec: dict[str, Any],
         progress_callback: Callable[[ProgressUpdate], None] | None = None,
+        runner_spec_path: str | Path | None = None,
     ):
+        self.spec = spec
+        self.runner_spec_path = (
+            Path(runner_spec_path).expanduser().resolve() if runner_spec_path else None
+        )
         # Best-effort, transport-agnostic hook: simcore emits ProgressUpdate
         # snapshots; the caller decides what to do with them. None = disabled.
         self._progress_callback = progress_callback
@@ -112,6 +141,19 @@ class SimulationEngine:
         self.output_base = Path(task_spec.get("output_dir", "./outputs")).expanduser().resolve()
         self.output_base.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output base directory set to: {self.output_base}")
+        self._stop_condition_config_path = _resolve_scenario_relative_path(
+            scenario_spec.get("stop_condition_config_path"),
+            scenario_base_path,
+            default_filename="stop_conditions.yaml",
+        )
+        self._execution_manifest_path = self.output_base / "execution_manifest.yaml"
+        self._initialize_execution_manifest(
+            sampler_spec=sampler_spec,
+            scenario_spec=scenario_spec,
+            sim_spec=sim_spec,
+            av_spec=av_spec,
+            monitor_spec=monitor_spec,
+        )
         self._startup_error: ScenarioExecutionError | None = None
         self.av: AVWrapper | None = None
         self.sim: SimWrapper | None = None
@@ -166,11 +208,7 @@ class SimulationEngine:
             av=self.av,
             sim=self.sim,
             config_path=monitor_spec.get("config_path", None),
-            stop_condition_config_path=_resolve_scenario_relative_path(
-                scenario_spec.get("stop_condition_config_path"),
-                scenario_base_path,
-                default_filename="stop_conditions.yaml",
-            ),
+            stop_condition_config_path=self._stop_condition_config_path,
             sps=self.sps,
             position_parser=self.position_parser,
             job_id=self.job_id,
@@ -291,7 +329,12 @@ class SimulationEngine:
 
             outcome_count = len(self.monitor.concrete_outcomes())
             try:
-                self.concrete_wrapper(output_related, self.sps, params, sim_params=sim_params)
+                self.concrete_wrapper(
+                    output_related,
+                    self.sps,
+                    params,
+                    sim_params=sim_params,
+                )
             except ScenarioExecutionError as e:
                 self._update_sampler(sample, output_related, outcome_count)
                 if e.skip_concrete:
@@ -342,7 +385,12 @@ class SimulationEngine:
         if sim_params != params:
             logger.info(f"Simulator parameters: {json.dumps(sim_params)}")
         self._emit_progress(total)
-        self.concrete_wrapper(output_related, self.sps, params, sim_params=sim_params)
+        self.concrete_wrapper(
+            output_related,
+            self.sps,
+            params,
+            sim_params=sim_params,
+        )
         self._emit_progress(total)
 
     def concrete_wrapper(
@@ -352,6 +400,7 @@ class SimulationEngine:
         params: dict[str, Any] | None = None,
         *,
         sim_params: dict[str, Any] | None = None,
+        sample_id: str | None = None,
     ) -> None:
         last_status = self.monitor.last_summary_status(output_related)
         if last_status in {"skipped", "abort"}:
@@ -374,11 +423,20 @@ class SimulationEngine:
                 "aborting concrete"
             )
             logger.warning("%s for %s", reason, output_related)
-            self._finalize_aborted_concrete(output_related, params, reason)
+            self._finalize_aborted_concrete(output_related, params, reason, sample_id=sample_id)
             return
 
         try:
-            self.run_concrete(output_related, sps, params, sim_params=sim_params)
+            if sample_id is None:
+                self.run_concrete(output_related, sps, params, sim_params=sim_params)
+            else:
+                self.run_concrete(
+                    output_related,
+                    sps,
+                    params,
+                    sim_params=sim_params,
+                    sample_id=sample_id,
+                )
         except ScenarioExecutionError as e:
             if e.skip_concrete:
                 logger.warning(
@@ -391,6 +449,7 @@ class SimulationEngine:
                         output_related,
                         params,
                         f"dont_retry: {e}",
+                        sample_id=sample_id,
                     )
                 self._record_skipped_concrete(f"dont_retry: {e}")
                 return
@@ -409,6 +468,7 @@ class SimulationEngine:
         params: dict[str, Any] | None = None,
         *,
         sim_params: dict[str, Any] | None = None,
+        sample_id: str | None = None,
     ) -> None:
         """
         Run a single concrete scenario with the given parameters.
@@ -417,10 +477,13 @@ class SimulationEngine:
         stop_reason = ""
         try:
             logger.debug("Resetting monitor...")
-            self.monitor.reset(
+            self._reset_monitor(
                 output_related,
                 params=params,
                 overwrite_summary=self.overwrite,
+                sample_id=sample_id or _sample_id_from_output(output_related),
+                attempt=self._next_summary_attempt(output_related),
+                parameter_hash=_parameter_hash(params),
             )
             if self.monitor.should_stop(check_external_quit=False):
                 stop_reason = self.monitor.stop_reason or "monitor_stop"
@@ -532,6 +595,16 @@ class SimulationEngine:
                 self.monitor.close(result)
             except Exception:
                 logger.exception("monitor.close() failed")
+        if result is not None:
+            try:
+                if hasattr(self, "_execution_manifest_path"):
+                    finalize_execution_manifest(
+                        self._execution_manifest_path,
+                        result=result,
+                        monitor_counts=self._manifest_monitor_counts(),
+                    )
+            except Exception:
+                logger.exception("execution_manifest finalization failed")
         if self.av is not None:
             try:
                 self.av.stop()
@@ -555,12 +628,17 @@ class SimulationEngine:
         output_related: str,
         params: dict[str, Any] | None,
         reason: str,
+        *,
+        sample_id: str | None = None,
     ) -> None:
         try:
-            self.monitor.reset(
+            self._reset_monitor(
                 output_related,
                 params=params,
                 overwrite_summary=self.overwrite,
+                sample_id=sample_id or _sample_id_from_output(output_related),
+                attempt=self._next_summary_attempt(output_related),
+                parameter_hash=_parameter_hash(params),
             )
             self.monitor.finalize(status="skipped", reason=reason)
         except Exception:
@@ -571,12 +649,17 @@ class SimulationEngine:
         output_related: str,
         params: dict[str, Any] | None,
         reason: str,
+        *,
+        sample_id: str | None = None,
     ) -> None:
         try:
-            self.monitor.reset(
+            self._reset_monitor(
                 output_related,
                 params=params,
                 overwrite_summary=self.overwrite,
+                sample_id=sample_id or _sample_id_from_output(output_related),
+                attempt=self._next_summary_attempt(output_related),
+                parameter_hash=_parameter_hash(params),
             )
             self.monitor.finalize(status="abort", reason=reason)
         except Exception:
@@ -695,3 +778,104 @@ class SimulationEngine:
             return float(value)
         except ValueError:
             return value
+
+    def _initialize_execution_manifest(
+        self,
+        *,
+        sampler_spec: dict[str, Any],
+        scenario_spec: dict[str, Any],
+        sim_spec: dict[str, Any],
+        av_spec: dict[str, Any],
+        monitor_spec: dict[str, Any],
+    ) -> None:
+        resolved_inputs = {
+            "runner_spec": self.runner_spec_path,
+            "scenario": _path_or_none(scenario_spec.get("scenario_path")),
+            "simulator_config": _path_or_none(sim_spec.get("config_path")),
+            "av_config": _path_or_none(av_spec.get("config_path")),
+            "sampler_config": _path_or_none(sampler_spec.get("config_path")),
+            "sampler_source": _path_or_none(
+                sampler_spec.get("source", {}).get("path")
+                if isinstance(sampler_spec.get("source"), dict)
+                else None
+            ),
+            "monitor_config": _path_or_none(monitor_spec.get("config_path")),
+            "stop_conditions": _path_or_none(self._stop_condition_config_path),
+            "map_osm": _path_or_none(self.spec.get("map", {}).get("osm_path")),
+            "map_xodr": _path_or_none(self.spec.get("map", {}).get("xodr_path")),
+        }
+        effective_spec = {
+            **self.spec,
+            "sampler": sampler_spec,
+        }
+        expected = build_execution_manifest(
+            effective_spec,
+            output_base=self.output_base,
+            resolved_inputs=resolved_inputs,
+            runner_spec_path=self.runner_spec_path,
+        )
+        if self._execution_manifest_path.exists():
+            existing = load_execution_manifest(self._execution_manifest_path)
+            validate_existing_manifest(existing, expected)
+            return
+        write_execution_manifest(self._execution_manifest_path, expected)
+
+    def _manifest_monitor_counts(self) -> dict[str, int]:
+        if self.monitor is None:
+            return {}
+        cumulative = getattr(self.monitor, "_cumulative_concrete_status_counts", None)
+        if callable(cumulative):
+            counts = cumulative()
+            return {
+                "finished": counts.get("finished", 0),
+                "failed": counts.get("error", 0),
+                "skipped": counts.get("skipped", 0),
+                "aborted": counts.get("abort", 0),
+            }
+        counts = getattr(self.monitor, "current_summary_counts", {})
+        return {
+            "finished": counts.get("finished", 0),
+            "failed": counts.get("error", 0),
+            "skipped": counts.get("skipped", 0),
+            "aborted": counts.get("abort", 0),
+        }
+
+    def _next_summary_attempt(self, output_related: str) -> int:
+        next_attempt = getattr(self.monitor, "next_summary_attempt", None)
+        if callable(next_attempt):
+            return int(next_attempt(output_related))
+        return 1
+
+    def _reset_monitor(
+        self,
+        output_related: str,
+        *,
+        params: dict[str, Any] | None,
+        overwrite_summary: bool,
+        sample_id: str,
+        attempt: int,
+        parameter_hash: str,
+    ) -> None:
+        try:
+            self.monitor.reset(
+                output_related,
+                params=params,
+                overwrite_summary=overwrite_summary,
+                sample_id=sample_id,
+                attempt=attempt,
+                parameter_hash=parameter_hash,
+            )
+        except TypeError as exc:
+            if "unexpected keyword" not in str(exc):
+                raise
+            self.monitor.reset(
+                output_related,
+                params=params,
+                overwrite_summary=overwrite_summary,
+            )
+
+
+def _path_or_none(path: str | Path | None) -> Path | None:
+    if path is None or str(path) == "":
+        return None
+    return Path(path).expanduser()

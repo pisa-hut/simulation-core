@@ -16,11 +16,17 @@ PAIR_TTC_FIELDS = (
     "lateral_distance_m",
     "closing_speed_mps",
     "ttc_s",
+    "ttc_valid",
+    "ttc_status",
+    "in_lateral_conflict",
 )
 DEFAULT_PAIR_TTC_FIELDS = (
     "distance_m",
     "closing_speed_mps",
     "ttc_s",
+    "ttc_valid",
+    "ttc_status",
+    "in_lateral_conflict",
 )
 
 
@@ -62,5 +68,8 @@ class PairTTCFrameRecorder(FrameRecorder):
             "lateral_distance_m": result.lateral_distance_m,
             "closing_speed_mps": result.closing_speed_mps,
             "ttc_s": result.ttc_s,
+            "ttc_valid": result.ttc_valid,
+            "ttc_status": result.ttc_status,
+            "in_lateral_conflict": result.in_lateral_conflict,
         }
         return {field: values[field] for field in self._fields}

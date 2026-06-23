@@ -23,6 +23,13 @@ logging:
         name: ego_to_agent_1
         actor_id_a: 0
         actor_id_b: 1
+        fields:
+          - distance_m
+          - closing_speed_mps
+          - ttc_s
+          - ttc_valid
+          - ttc_status
+          - in_lateral_conflict
 
       - type: pair_criticality
         name: ego_to_agent_1_criticality
@@ -34,6 +41,11 @@ logging:
           - relative_lateral_speed_mps
           - thw_s
           - drac_mps2
+
+      - type: pair_clearance
+        name: ego_to_agent_1_clearance
+        actor_id_a: 0
+        actor_id_b: 1
 
   # Variable-cardinality logs are written as separate tables.
   # `agent_states.csv` is long-table format: one row per agent per logged frame.
@@ -47,6 +59,18 @@ logging:
     - type: collision_events
       name: ego_collision_events
       output: collision_events.csv
+      actor_id_a: 0
+      deduplicate: true
+
+    # One row per logged control command returned by AV and passed to simulator.
+    - type: control_commands
+      name: control_commands
+      every_n_steps: 1
+      output: control_commands.csv
+
+    - type: scenario_events
+      name: scenario_events
+      output: scenario_events.csv
       actor_id_a: 0
       deduplicate: true
 

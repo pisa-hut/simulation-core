@@ -15,6 +15,9 @@ BASIC_SUMMARY_FIELDS = (
     "wall_time_ms",
     "speedup",
     "job_id",
+    "sample_id",
+    "attempt",
+    "parameter_hash",
     "params",
 )
 
@@ -34,5 +37,8 @@ class BasicSummaryRecorder(SummaryRecorder):
             "wall_time_ms": context.wall_time_ms,
             "speedup": context.speedup,
             "job_id": context.job_id,
+            "sample_id": context.sample_id,
+            "attempt": context.attempt,
+            "parameter_hash": context.parameter_hash,
             "params": json.dumps(context.params, sort_keys=True),
         }

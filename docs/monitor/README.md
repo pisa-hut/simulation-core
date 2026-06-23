@@ -311,8 +311,9 @@ Built-in frame recorders:
 | Type | Fields |
 | --- | --- |
 | `ego_state` | `x`, `y`, `z`, `yaw`, `speed`, `acceleration`, `yaw_rate`, `yaw_acceleration` |
-| `pair_ttc` | `distance_m`, `closing_speed_mps`, `ttc_s`; optional `longitudinal_distance_m`, `lateral_distance_m` |
+| `pair_ttc` | `distance_m`, `closing_speed_mps`, `ttc_s`, `ttc_valid`, `ttc_status`, `in_lateral_conflict`; optional `longitudinal_distance_m`, `lateral_distance_m` |
 | `pair_criticality` | `distance_m`, `longitudinal_distance_m`, `lateral_distance_m`, `closing_speed_mps`, `relative_longitudinal_speed_mps`, `relative_lateral_speed_mps`, `relative_longitudinal_acceleration_mps2`, `relative_lateral_acceleration_mps2`, `thw_s`, `drac_mps2` |
+| `pair_clearance` | `center_distance_m`, `clearance_m`, `longitudinal_clearance_m`, `lateral_clearance_m`, `clearance_status` |
 
 ### Table Recorders
 
@@ -322,6 +323,8 @@ Table recorders write their own CSV streams. They are for variable-cardinality d
 | --- | --- |
 | `agent_states` | One row per agent per logged frame. |
 | `collision_events` | One row per matching collision event. |
+| `control_commands` | One row per logged AV control command. |
+| `scenario_events` | Generic scenario event timeline for start, collision, stop, and end events. |
 
 ### Summary Recorders
 
@@ -329,7 +332,7 @@ Summary recorders update during the scenario and write one merged row at finaliz
 
 | Type | Fields |
 | --- | --- |
-| `basic_summary` | `status`, `test_outcome`, `stop_condition`, `stop_reason`, `total_steps`, `final_sim_time_ms`, `wall_time_ms`, `job_id`, `params` |
+| `basic_summary` | `status`, `test_outcome`, `stop_condition`, `stop_reason`, `total_steps`, `final_sim_time_ms`, `wall_time_ms`, `job_id`, `sample_id`, `attempt`, `parameter_hash`, `params` |
 | `collision` | `collision` |
 | `min_ttc` | `min_ttc_s` |
 | `max_speed` | `max_speed_mps` |

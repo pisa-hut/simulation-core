@@ -31,7 +31,7 @@ def main():
     with open(args.runner_spec) as f:
         runner_spec = json.load(f)
 
-    engine = SimulationEngine(runner_spec)
+    engine = SimulationEngine(runner_spec, runner_spec_path=args.runner_spec)
     result = engine.exec()
 
     logger.info(

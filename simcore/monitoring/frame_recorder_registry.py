@@ -6,6 +6,9 @@ FRAME_RECORDER_REGISTRY = {
         "simcore.monitoring.frame_recorders.pair_criticality:PairCriticalityFrameRecorder"
     ),
     "pair_ttc": "simcore.monitoring.frame_recorders.pair_ttc:PairTTCFrameRecorder",
+    "pair_clearance": (
+        "simcore.monitoring.frame_recorders.pair_clearance:PairClearanceFrameRecorder"
+    ),
 }
 
 

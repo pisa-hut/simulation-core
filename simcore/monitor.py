@@ -1,4 +1,6 @@
 import csv
+import hashlib
+import json
 import logging
 from pathlib import Path
 from time import monotonic
@@ -64,6 +66,9 @@ class Monitor:
         self.stop_condition_name = ""
         self.test_outcome = "unknown"
         self.params: dict[str, Any] = {}
+        self.sample_id = ""
+        self.attempt = 1
+        self.parameter_hash = ""
         self.wall_start_time_s: float | None = None
         self.overwrite_summary = False
         self.current_summary_counts = {"finished": 0, "error": 0, "skipped": 0, "abort": 0}
@@ -283,6 +288,9 @@ class Monitor:
         output_related: str,
         params: dict[str, Any] | None = None,
         overwrite_summary: bool = False,
+        sample_id: str | None = None,
+        attempt: int | None = None,
+        parameter_hash: str | None = None,
     ):
         self._close_log_manager()
         self.step_index = 0
@@ -292,6 +300,9 @@ class Monitor:
         self.test_outcome = "unknown"
         self.current_output_related = output_related
         self.params = dict(params or {})
+        self.sample_id = sample_id or output_related
+        self.attempt = int(attempt or self.next_summary_attempt(output_related))
+        self.parameter_hash = parameter_hash or self._parameter_hash(self.params)
         self.condition_context["params"] = self.params
         self.condition_context["current_sim_time_ns"] = 0
         self.wall_start_time_s = monotonic()
@@ -356,6 +367,14 @@ class Monitor:
 
         try:
             for recorder in self.table_recorders:
+                scenario_end_events = getattr(recorder, "scenario_end_events", None)
+                if callable(scenario_end_events):
+                    for row in scenario_end_events(
+                        status=effective_status,
+                        stop_condition=effective_stop_condition,
+                        reason=reason or self.stop_reason,
+                    ):
+                        self.log_manager.write(row.stream, row.row)
                 for row in recorder.finalize():
                     self.log_manager.write(row.stream, row.row)
 
@@ -423,6 +442,11 @@ class Monitor:
             / self.summary_output
         )
 
+    def next_summary_attempt(self, output_related: str) -> int:
+        if self.overwrite_summary:
+            return 1
+        return len(self.summary_rows(output_related)) + 1
+
     def _log_streams(self) -> list[LogStream]:
         streams = []
         if self.summary_logging_enabled:
@@ -476,6 +500,9 @@ class Monitor:
             speedup=self._speedup(wall_time_ms),
             params=self.params,
             job_id=self.job_id,
+            sample_id=self.sample_id,
+            attempt=self.attempt,
+            parameter_hash=self.parameter_hash,
         )
         row = {field: None for field in self._summary_fields()}
         for recorder in self.summary_recorders:
@@ -718,6 +745,16 @@ class Monitor:
         if self.current_wall_time_ms <= 0:
             return 0.0
         return self.current_sim_time_ms / self.current_wall_time_ms
+
+    @staticmethod
+    def _parameter_hash(params: dict[str, Any]) -> str:
+        payload = json.dumps(
+            params,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _summary_recorder_configs(

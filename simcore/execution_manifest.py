@@ -29,6 +29,9 @@ ANALYSIS_POLICY_KEYS = {
     "near_critical_threshold",
     "sampler_rank",
 }
+IGNORED_COMPATIBILITY_PATHS = {
+    ("execution", "overwrite"),
+}
 
 
 def build_execution_manifest(
@@ -107,7 +110,7 @@ def validate_existing_manifest(existing: dict, expected: dict) -> None:
             f"{existing.get('schema_version')!r}"
         )
     for field in INCOMPATIBLE_FIELDS:
-        if not _compatible_value(existing.get(field), expected.get(field)):
+        if not _compatible_value(existing.get(field), expected.get(field), path=(field,)):
             raise ValueError(
                 "Existing execution_manifest.yaml is incompatible for this output root: "
                 f"{field} differs"
@@ -155,12 +158,14 @@ def load_execution_manifest(path: Path) -> dict:
     return loaded
 
 
-def _compatible_value(existing: Any, expected: Any) -> bool:
+def _compatible_value(existing: Any, expected: Any, path: tuple[str, ...] = ()) -> bool:
+    if path in IGNORED_COMPATIBILITY_PATHS:
+        return True
     if isinstance(existing, dict) and isinstance(expected, dict):
         for key, existing_value in existing.items():
             if key not in expected:
                 continue
-            if not _compatible_value(existing_value, expected[key]):
+            if not _compatible_value(existing_value, expected[key], path=(*path, key)):
                 return False
         return True
     return existing == expected

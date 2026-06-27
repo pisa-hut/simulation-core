@@ -117,6 +117,33 @@ def test_existing_legacy_manifest_may_omit_new_resolved_inputs(tmp_path: Path) -
     validate_existing_manifest(existing, expected)
 
 
+def test_existing_manifest_allows_overwrite_policy_change(tmp_path: Path) -> None:
+    expected = {
+        "schema_version": 1,
+        "dt": 0.1,
+        "seed": None,
+        "scenario_name": "case",
+        "resolved_inputs": {"runner_spec": "/repo/spec.json"},
+        "execution": {
+            "job_id": "0",
+            "permutation": None,
+            "overwrite": False,
+            "max_concrete_retries": 3,
+        },
+    }
+    existing = {
+        **expected,
+        "execution": {
+            "job_id": "0",
+            "permutation": None,
+            "overwrite": True,
+            "max_concrete_retries": 3,
+        },
+    }
+
+    validate_existing_manifest(existing, expected)
+
+
 def test_existing_incompatible_manifest_is_rejected(tmp_path: Path) -> None:
     expected = {
         "schema_version": 1,

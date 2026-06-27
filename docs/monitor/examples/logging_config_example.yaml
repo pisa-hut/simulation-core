@@ -55,6 +55,11 @@ logging:
       every_n_steps: 1
       output: agent_states.csv
 
+    - type: agent_geometry
+      name: agent_geometry
+      output: agent_geometry.csv
+      once: true
+
     # Sparse event table: writes a row only when a matching collision is reported.
     - type: collision_events
       name: ego_collision_events

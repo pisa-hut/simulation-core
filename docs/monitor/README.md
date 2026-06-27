@@ -322,6 +322,7 @@ Table recorders write their own CSV streams. They are for variable-cardinality d
 | Type | Output |
 | --- | --- |
 | `agent_states` | One row per agent per logged frame. |
+| `agent_geometry` | Agent shape and dimensions from observations; defaults to one row per agent per concrete run. |
 | `collision_events` | One row per matching collision event. |
 | `control_commands` | One row per logged AV control command. |
 | `scenario_events` | Generic scenario event timeline for start, collision, stop, and end events. |

@@ -4,6 +4,7 @@ from math import cos, hypot, sin
 from typing import Any
 
 from simcore.metrics.actors import find_actor, float_attr, object_kinematic
+from simcore.monitoring.geometry import actor_geometry
 from simcore.monitoring.sample import MonitorSample
 
 from .base import FrameRecorder
@@ -84,35 +85,10 @@ class PairClearanceFrameRecorder(FrameRecorder):
 
 
 def _dimensions(actor: Any) -> tuple[float, float, float] | None:
-    shape = getattr(actor, "shape", None)
-    if callable(shape):
-        shape = shape()
-    if shape is None:
-        shape = getattr(actor, "_shape", None)
-    dimensions = getattr(shape, "dimensions", None)
-    if dimensions is None:
+    geometry = actor_geometry(actor)
+    if geometry is None or geometry.length_m is None or geometry.width_m is None:
         return None
-    if isinstance(dimensions, tuple | list) and len(dimensions) >= 2:
-        length = _positive_float(dimensions[0])
-        width = _positive_float(dimensions[1])
-        height = _positive_float(dimensions[2]) if len(dimensions) > 2 else None
-    else:
-        length = _positive_float(getattr(dimensions, "x", None))
-        width = _positive_float(getattr(dimensions, "y", None))
-        height = _positive_float(getattr(dimensions, "z", None))
-    if length is None or width is None:
-        return None
-    return length, width, height or 0.0
-
-
-def _positive_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed > 0 else None
+    return geometry.length_m, geometry.width_m, geometry.height_m or 0.0
 
 
 def _value_for_missing_actor(field: str) -> Any:

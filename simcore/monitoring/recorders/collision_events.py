@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+
+from simcore.monitoring.geometry import actor_box, estimate_contact
 from simcore.monitoring.log_manager import LogStream
 from simcore.monitoring.sample import LogRow, MonitorSample
 
@@ -15,6 +18,7 @@ COLLISION_EVENT_FIELDS = (
     "y",
     "z",
     "position_source",
+    "contact_region_json",
 )
 
 
@@ -52,7 +56,11 @@ class CollisionEventsRecorder(Recorder):
                 continue
 
             self._seen_pairs.add(pair)
-            x, y, z, position_source = self._collision_position(collision, sample, pair)
+            x, y, z, position_source, contact_region_json = self._collision_position(
+                collision,
+                sample,
+                pair,
+            )
             rows.append(
                 LogRow(
                     stream=self.name,
@@ -65,6 +73,7 @@ class CollisionEventsRecorder(Recorder):
                         "y": y,
                         "z": z,
                         "position_source": position_source,
+                        "contact_region_json": contact_region_json,
                     },
                 )
             )
@@ -119,14 +128,18 @@ class CollisionEventsRecorder(Recorder):
         collision,
         sample: MonitorSample,
         pair: tuple[int, int],
-    ) -> tuple[float | None, float | None, float | None, str]:
+    ) -> tuple[float | None, float | None, float | None, str, str]:
         direct = cls._direct_position(collision)
         if direct is not None:
-            return (*direct, "collision")
+            return (*direct, "collision", "")
+        bbox = cls._bbox_contact(sample, pair)
+        if bbox is not None:
+            x, y, source, region_json = bbox
+            return x, y, cls._midpoint_z(sample, pair), source, region_json
         midpoint = cls._actor_midpoint(sample, pair)
         if midpoint is not None:
-            return (*midpoint, "actor_midpoint")
-        return None, None, None, "unavailable"
+            return (*midpoint, "actor_midpoint", "")
+        return None, None, None, "unavailable", ""
 
     @staticmethod
     def _direct_position(collision) -> tuple[float | None, float | None, float | None] | None:
@@ -168,3 +181,38 @@ class CollisionEventsRecorder(Recorder):
         bx, by, bz = positions[pair[1]]
         z = None if az is None or bz is None else (az + bz) / 2.0
         return (ax + bx) / 2.0, (ay + by) / 2.0, z
+
+    @staticmethod
+    def _bbox_contact(
+        sample: MonitorSample,
+        pair: tuple[int, int],
+    ) -> tuple[float, float, str, str] | None:
+        objects = getattr(sample.runtime_frame, "objects", None) or []
+        boxes = {}
+        for index, obj in enumerate(objects):
+            actor_id = object_actor_id(obj, index)
+            if actor_id not in pair:
+                continue
+            box = actor_box(obj)
+            if box is not None:
+                boxes[actor_id] = box
+        if pair[0] not in boxes or pair[1] not in boxes:
+            return None
+        estimate = estimate_contact(boxes[pair[0]], boxes[pair[1]])
+        region_json = (
+            json.dumps(
+                [{"x": x, "y": y} for x, y in estimate.region],
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            if estimate.region
+            else ""
+        )
+        return estimate.x, estimate.y, estimate.source, region_json
+
+    @staticmethod
+    def _midpoint_z(sample: MonitorSample, pair: tuple[int, int]) -> float | None:
+        midpoint = CollisionEventsRecorder._actor_midpoint(sample, pair)
+        if midpoint is None:
+            return None
+        return midpoint[2]

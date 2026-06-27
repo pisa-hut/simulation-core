@@ -19,6 +19,7 @@ SCENARIO_EVENT_FIELDS = (
     "y",
     "z",
     "source",
+    "contact_region_json",
     "details_json",
 )
 
@@ -63,6 +64,7 @@ class ScenarioEventsRecorder(Recorder):
                     y=row.get("y"),
                     z=row.get("z"),
                     source=row.get("position_source") or "runner",
+                    contact_region_json=row.get("contact_region_json", ""),
                 )
             )
         return rows
@@ -107,6 +109,7 @@ class ScenarioEventsRecorder(Recorder):
         y: Any = None,
         z: Any = None,
         source: str,
+        contact_region_json: str = "",
         details: dict[str, Any] | None = None,
     ) -> LogRow:
         return LogRow(
@@ -121,6 +124,7 @@ class ScenarioEventsRecorder(Recorder):
                 "y": y,
                 "z": z,
                 "source": source,
+                "contact_region_json": contact_region_json,
                 "details_json": json.dumps(
                     details or {},
                     sort_keys=True,

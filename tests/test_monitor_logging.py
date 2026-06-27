@@ -67,8 +67,23 @@ def make_shaped_object(
     width: float,
 ):
     obj = make_object(actor_id, x, y)
-    obj.shape = SimpleNamespace(dimensions=(length, width, 1.5))
+    obj.shape = make_shape(length=length, width=width)
     return obj
+
+
+def make_shape(
+    *,
+    length: float,
+    width: float,
+    height: float = 1.5,
+    shape_type: str = "bounding_box",
+    footprint=None,
+):
+    return SimpleNamespace(
+        type=shape_type,
+        dimensions=(length, width, height),
+        footprint=footprint,
+    )
 
 
 class FakeCollision:
@@ -78,12 +93,15 @@ class FakeCollision:
         occurred: bool,
         actor_a: int | None = None,
         actor_b: int | None = None,
+        position=None,
     ) -> None:
         self.occurred = occurred
         if actor_a is not None:
             self.actor_a = actor_a
         if actor_b is not None:
             self.actor_b = actor_b
+        if position is not None:
+            self.position = position
 
     def HasField(self, field_name: str) -> bool:
         return hasattr(self, field_name)
@@ -254,6 +272,54 @@ logging:
     ]
 
 
+def test_monitor_writes_agent_geometry_from_observation_shape(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  tables:
+    - type: agent_geometry
+      name: agent_geometry
+      output: agent_geometry.csv
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    actor = make_shaped_object(0, 1.0, 2.0, length=4.5, width=1.8)
+    actor.shape = make_shape(
+        length=4.5,
+        width=1.8,
+        height=1.6,
+        footprint=((1.0, 0.5), (1.0, -0.5), (-1.0, -0.5), (-1.0, 0.5)),
+    )
+    monitor.update(0, SimpleNamespace(objects=[actor]), None)
+    monitor.update(10_000_000, SimpleNamespace(objects=[actor]), None)
+    monitor.finalize(status="finished", reason="completed")
+
+    rows = read_csv(output_base / "case_1" / "monitor" / "agent_geometry.csv")
+    assert len(rows) == 1
+    assert rows[0]["agent_id"] == "0"
+    assert rows[0]["shape_type"] == "bounding_box"
+    assert rows[0]["length_m"] == "4.500000"
+    assert rows[0]["width_m"] == "1.800000"
+    assert rows[0]["height_m"] == "1.600000"
+    assert rows[0]["source"] == "observation"
+    assert json.loads(rows[0]["footprint_json"]) == [
+        [1.0, 0.5],
+        [1.0, -0.5],
+        [-1.0, -0.5],
+        [-1.0, 0.5],
+    ]
+
+
 def test_monitor_writes_collision_events_as_sparse_table(tmp_path: Path) -> None:
     config_path = write_config(
         tmp_path,
@@ -313,6 +379,137 @@ logging:
     assert rows[0]["x"] == "2.000000"
     assert rows[0]["y"] == "3.000000"
     assert rows[0]["position_source"] == "actor_midpoint"
+
+
+def test_collision_events_prefer_direct_collision_position(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  tables:
+    - type: collision_events
+      name: collision_events
+      output: collision_events.csv
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.update(
+        0,
+        SimpleNamespace(
+            objects=[
+                make_shaped_object(0, 0.0, 0.0, length=4.0, width=2.0),
+                make_shaped_object(1, 10.0, 0.0, length=4.0, width=2.0),
+            ],
+            collision=[
+                FakeCollision(
+                    occurred=True,
+                    actor_a=0,
+                    actor_b=1,
+                    position=SimpleNamespace(x=7.0, y=8.0, z=0.2),
+                )
+            ],
+        ),
+        None,
+    )
+    monitor.finalize(status="finished", reason="completed")
+
+    row = read_csv(output_base / "case_1" / "monitor" / "collision_events.csv")[0]
+    assert row["x"] == "7.000000"
+    assert row["y"] == "8.000000"
+    assert row["z"] == "0.200000"
+    assert row["position_source"] == "collision"
+    assert row["contact_region_json"] == ""
+
+
+def test_collision_events_estimate_bbox_overlap_contact_point(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  tables:
+    - type: collision_events
+      name: collision_events
+      output: collision_events.csv
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.update(
+        0,
+        SimpleNamespace(
+            objects=[
+                make_shaped_object(0, 0.0, 0.0, length=4.0, width=2.0),
+                make_shaped_object(1, 3.0, 0.0, length=4.0, width=2.0),
+            ],
+            collision=[FakeCollision(occurred=True, actor_a=0, actor_b=1)],
+        ),
+        None,
+    )
+    monitor.finalize(status="finished", reason="completed")
+
+    row = read_csv(output_base / "case_1" / "monitor" / "collision_events.csv")[0]
+    assert row["x"] == "1.500000"
+    assert row["y"] == "0.000000"
+    assert row["position_source"] == "derived_bbox_overlap"
+    assert json.loads(row["contact_region_json"])
+
+
+def test_collision_events_estimate_bbox_closest_contact_point(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        """
+logging:
+  enabled: true
+  tables:
+    - type: collision_events
+      name: collision_events
+      output: collision_events.csv
+""",
+    )
+    output_base = tmp_path / "outputs"
+    monitor = Monitor(
+        config_path=str(config_path),
+        log_file=str(output_base / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+    )
+
+    monitor.reset("case_1")
+    monitor.update(
+        0,
+        SimpleNamespace(
+            objects=[
+                make_shaped_object(0, 0.0, 0.0, length=4.0, width=2.0),
+                make_shaped_object(1, 5.0, 0.0, length=4.0, width=2.0),
+            ],
+            collision=[FakeCollision(occurred=True, actor_a=0, actor_b=1)],
+        ),
+        None,
+    )
+    monitor.finalize(status="finished", reason="completed")
+
+    row = read_csv(output_base / "case_1" / "monitor" / "collision_events.csv")[0]
+    assert row["x"] == "2.500000"
+    assert row["y"] == "0.000000"
+    assert row["position_source"] == "derived_bbox_closest"
+    assert row["contact_region_json"] == ""
 
 
 def test_monitor_writes_scenario_events_table(tmp_path: Path) -> None:

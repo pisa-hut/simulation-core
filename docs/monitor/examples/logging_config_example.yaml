@@ -16,13 +16,12 @@ logging:
     recorders:
       - type: ego_state
         name: ego
-        actor_id: 0
         fields: [x, y, z, yaw, speed, acceleration]
 
       - type: pair_ttc
-        name: ego_to_agent_1
-        actor_id_a: 0
-        actor_id_b: 1
+        name: ego_to_cutin
+        actor_a: {role: ego}
+        actor_b: {entity_name: CutInVehicle}
         fields:
           - distance_m
           - closing_speed_mps
@@ -32,9 +31,9 @@ logging:
           - in_lateral_conflict
 
       - type: pair_criticality
-        name: ego_to_agent_1_criticality
-        actor_id_a: 0
-        actor_id_b: 1
+        name: ego_to_cutin_criticality
+        actor_a: {role: ego}
+        actor_b: {entity_name: CutInVehicle}
         fields:
           - longitudinal_distance_m
           - lateral_distance_m
@@ -43,9 +42,9 @@ logging:
           - drac_mps2
 
       - type: pair_clearance
-        name: ego_to_agent_1_clearance
-        actor_id_a: 0
-        actor_id_b: 1
+        name: ego_to_cutin_clearance
+        actor_a: {role: ego}
+        actor_b: {entity_name: CutInVehicle}
 
   # Variable-cardinality logs are written as separate tables.
   # `agent_states.csv` is long-table format: one row per agent per logged frame.
@@ -64,7 +63,7 @@ logging:
     - type: collision_events
       name: ego_collision_events
       output: collision_events.csv
-      actor_id_a: 0
+      actor_a: {role: ego}
       deduplicate: true
 
     # One row per logged control command returned by AV and passed to simulator.
@@ -76,7 +75,7 @@ logging:
     - type: scenario_events
       name: scenario_events
       output: scenario_events.csv
-      actor_id_a: 0
+      actor_a: {role: ego}
       deduplicate: true
 
   # Scenario-level metrics are merged into one row in result.csv.
@@ -87,53 +86,53 @@ logging:
     recorders:
       - type: collision
         name: ego_collision
-        actor_id_a: 0
+        actor_a: {role: ego}
 
       - type: min_ttc
-        name: ego_to_agent_1
-        actor_id_a: 0
-        actor_id_b: 1
+        name: ego_to_cutin
+        actor_a: {role: ego}
+        actor_b: {entity_name: CutInVehicle}
 
       - type: max_speed
         name: ego
-        actor_id: 0
+        actor: {role: ego}
 
       # Generic scalar aggregation. This records positive deceleration magnitude.
       - type: numeric_summary
         name: ego_deceleration
         source:
           type: kinematic
-          actor_id: 0
+          actor: {role: ego}
           field: acceleration
         transforms: [negate, positive_part]
         aggregations: [max, mean, std]
         include_extrema_location: true
 
       - type: numeric_summary
-        name: ego_to_agent_1_distance
+        name: ego_to_cutin_distance
         source:
           type: relative_position
           field: distance_m
-          source_actor_id: 0
-          target_actor_id: 1
+          source_actor: {role: ego}
+          target_actor: {entity_name: CutInVehicle}
         aggregations: [min, max, mean]
 
       - type: numeric_summary
-        name: ego_to_agent_1_thw
+        name: ego_to_cutin_thw
         source:
           type: pair_criticality
           field: thw_s
-          actor_id_a: 0
-          actor_id_b: 1
+          actor_a: {role: ego}
+          actor_b: {entity_name: CutInVehicle}
         aggregations: [min]
 
       - type: numeric_summary
-        name: ego_to_agent_1_drac
+        name: ego_to_cutin_drac
         source:
           type: pair_criticality
           field: drac_mps2
-          actor_id_a: 0
-          actor_id_b: 1
+          actor_a: {role: ego}
+          actor_b: {entity_name: CutInVehicle}
           lateral_threshold_m: 2.0
         aggregations: [max]
 
@@ -142,6 +141,6 @@ logging:
         source:
           type: pair_criticality
           field: relative_lateral_speed_mps
-          actor_id_a: 0
-          actor_id_b: 1
+          actor_a: {role: ego}
+          actor_b: {entity_name: CutInVehicle}
         aggregations: [min, max]

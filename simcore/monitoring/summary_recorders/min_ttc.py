@@ -14,8 +14,10 @@ MIN_TTC_FIELDS = ("min_ttc_s",)
 class MinTTCSummaryRecorder(SummaryRecorder):
     def __init__(self, config: dict):
         super().__init__(config)
-        if "actor_id_a" not in config or "actor_id_b" not in config:
-            raise ValueError("min_ttc summary recorder requires actor_id_a and actor_id_b")
+        has_a = "actor_a" in config or "actor_id_a" in config
+        has_b = "actor_b" in config or "actor_id_b" in config
+        if not has_a or not has_b:
+            raise ValueError("min_ttc summary recorder requires actor_a and actor_b")
         self.source = PairTTCValueSource({**config, "field": "ttc_s"})
         self.accumulator = NumericAccumulator(["min"])
 

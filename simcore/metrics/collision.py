@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from simcore.runtime_actors import collision_actor_ref
+
 
 def pair_collision_occurred(
     collisions: Any,
@@ -21,7 +23,9 @@ def pair_collision_occurred(
 def collision_pair(collision: Any) -> tuple[int, int] | None:
     if not _has_field(collision, "actor_a") or not _has_field(collision, "actor_b"):
         return None
-    return tuple(sorted((int(collision.actor_a), int(collision.actor_b))))
+    actor_a = collision_actor_ref(collision.actor_a)
+    actor_b = collision_actor_ref(collision.actor_b)
+    return tuple(sorted((actor_a.tracking_id, actor_b.tracking_id)))
 
 
 def _has_field(collision: Any, field_name: str) -> bool:

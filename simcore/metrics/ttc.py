@@ -43,9 +43,11 @@ def compute_pair_ttc(
     collisions: Any = None,
 ) -> PairTTCResult | None:
     mode = normalize_ttc_mode(mode)
-    has_collision = pair_collision_occurred(collisions, actor_id_a, actor_id_b)
     actor_a = find_actor(objects, actor_id_a)
     actor_b = find_actor(objects, actor_id_b)
+    collision_id_a = int(getattr(actor_a, "sim_tracking_id", actor_id_a))
+    collision_id_b = int(getattr(actor_b, "sim_tracking_id", actor_id_b))
+    has_collision = pair_collision_occurred(collisions, collision_id_a, collision_id_b)
     if actor_a is None or actor_b is None:
         if has_collision:
             return PairTTCResult(

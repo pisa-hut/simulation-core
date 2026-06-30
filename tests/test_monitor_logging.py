@@ -112,6 +112,29 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(file))
 
 
+def test_documented_monitor_examples_use_valid_semantic_selectors(tmp_path: Path) -> None:
+    docs_dir = Path(__file__).parents[1] / "docs" / "monitor" / "examples"
+    sps = SimpleNamespace(
+        ego=SimpleNamespace(
+            goal=SimpleNamespace(position=SimpleNamespace(x=10.0, y=20.0, z=0.0))
+        )
+    )
+
+    monitor = Monitor(
+        config_path=str(docs_dir / "logging_config_example.yaml"),
+        stop_condition_config_path=str(docs_dir / "stop_condition_config_example.yaml"),
+        log_file=str(tmp_path / "monitor_log.csv"),
+        av=FakeEndpoint(),
+        sim=FakeEndpoint(),
+        sps=sps,
+    )
+
+    assert monitor.frame_recorders
+    assert monitor.table_recorders
+    assert monitor.summary_recorders
+    assert monitor.root is not None
+
+
 def make_control(mode: int, payload: dict | None = None) -> control_pb2.CtrlCmd:
     payload_struct = Struct()
     if payload:

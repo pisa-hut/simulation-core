@@ -5,6 +5,14 @@ import json
 from simcore.monitoring.geometry import actor_box, estimate_contact
 from simcore.monitoring.log_manager import LogStream
 from simcore.monitoring.sample import LogRow, MonitorSample
+from simcore.runtime_actors import (
+    ActorSelector,
+    CollisionActorRef,
+    NormalizedRuntimeFrame,
+    collision_actor_ref,
+    parse_actor_selector,
+    selector_matches_ref,
+)
 
 from .base import Recorder
 from .utils import float_attr, object_actor_id, object_kinematic
@@ -14,6 +22,10 @@ COLLISION_EVENT_FIELDS = (
     "sim_time_ms",
     "actor_a",
     "actor_b",
+    "actor_a_sim_tracking_id",
+    "actor_b_sim_tracking_id",
+    "actor_a_entity_name",
+    "actor_b_entity_name",
     "x",
     "y",
     "z",
@@ -27,6 +39,8 @@ class CollisionEventsRecorder(Recorder):
         super().__init__(config)
         self.actor_id_a = self._parse_optional_actor_id(config, "actor_id_a")
         self.actor_id_b = self._parse_optional_actor_id(config, "actor_id_b")
+        self.actor_a = self._parse_optional_selector(config, "actor_a")
+        self.actor_b = self._parse_optional_selector(config, "actor_b")
         self.deduplicate = bool(config.get("deduplicate", False))
         self._seen_pairs: set[tuple[int, int]] = set()
 
@@ -52,14 +66,16 @@ class CollisionEventsRecorder(Recorder):
                 continue
             if not self._matches_filter(pair):
                 continue
-            if self.deduplicate and pair in self._seen_pairs:
+            pair_key = tuple(sorted((pair[0].tracking_id, pair[1].tracking_id)))
+            if self.deduplicate and pair_key in self._seen_pairs:
                 continue
 
-            self._seen_pairs.add(pair)
+            self._seen_pairs.add(pair_key)
+            runner_pair = self._runner_pair(sample, pair)
             x, y, z, position_source, contact_region_json = self._collision_position(
                 collision,
                 sample,
-                pair,
+                runner_pair,
             )
             rows.append(
                 LogRow(
@@ -67,8 +83,12 @@ class CollisionEventsRecorder(Recorder):
                     row={
                         "step_index": sample.step_index,
                         "sim_time_ms": sample.sim_time_ms,
-                        "actor_a": pair[0],
-                        "actor_b": pair[1],
+                        "actor_a": runner_pair[0] if runner_pair else None,
+                        "actor_b": runner_pair[1] if runner_pair else None,
+                        "actor_a_sim_tracking_id": pair[0].tracking_id,
+                        "actor_b_sim_tracking_id": pair[1].tracking_id,
+                        "actor_a_entity_name": pair[0].entity_name,
+                        "actor_b_entity_name": pair[1].entity_name,
                         "x": x,
                         "y": y,
                         "z": z,
@@ -80,8 +100,17 @@ class CollisionEventsRecorder(Recorder):
 
         return rows
 
-    def _matches_filter(self, pair: tuple[int, int]) -> bool:
-        actors = set(pair)
+    def _matches_filter(self, pair: tuple[CollisionActorRef, CollisionActorRef]) -> bool:
+        if self.actor_a is not None or self.actor_b is not None:
+            if self.actor_a is not None and self.actor_b is not None:
+                return any(
+                    selector_matches_ref(self.actor_a, first)
+                    and selector_matches_ref(self.actor_b, second)
+                    for first, second in (pair, tuple(reversed(pair)))
+                )
+            selector = self.actor_a or self.actor_b
+            return any(selector_matches_ref(selector, ref) for ref in pair)
+        actors = {ref.tracking_id for ref in pair}
         if self.actor_id_a is None and self.actor_id_b is None:
             return True
         if self.actor_id_a is not None and self.actor_id_b is None:
@@ -91,14 +120,16 @@ class CollisionEventsRecorder(Recorder):
         return actors == {self.actor_id_a, self.actor_id_b}
 
     @classmethod
-    def _collision_pair(cls, collision) -> tuple[int, int] | None:
+    def _collision_pair(
+        cls, collision
+    ) -> tuple[CollisionActorRef, CollisionActorRef] | None:
         if not getattr(collision, "occurred", False):
             return None
         if not cls._has_actor(collision, "actor_a") or not cls._has_actor(collision, "actor_b"):
             return None
-        actor_a = int(collision.actor_a)
-        actor_b = int(collision.actor_b)
-        return tuple(sorted((actor_a, actor_b)))
+        actor_a = collision_actor_ref(collision.actor_a)
+        actor_b = collision_actor_ref(collision.actor_b)
+        return tuple(sorted((actor_a, actor_b), key=lambda ref: ref.tracking_id))
 
     @staticmethod
     def _has_actor(collision, field_name: str) -> bool:
@@ -122,16 +153,44 @@ class CollisionEventsRecorder(Recorder):
                 f"CollisionEventsRecorder config '{key}' must be an integer, but got: {raw_value}"
             ) from exc
 
+    @staticmethod
+    def _parse_optional_selector(config: dict, key: str) -> ActorSelector | None:
+        if key not in config:
+            return None
+        return parse_actor_selector(config[key], field_name=key)
+
+    @staticmethod
+    def _runner_pair(
+        sample: MonitorSample,
+        pair: tuple[CollisionActorRef, CollisionActorRef],
+    ) -> tuple[int, int] | None:
+        if not isinstance(sample.runtime_frame, NormalizedRuntimeFrame):
+            return pair[0].tracking_id, pair[1].tracking_id
+        actors = getattr(sample.runtime_frame, "objects", ()) or ()
+        runner_ids = {}
+        for actor in actors:
+            tracking_id = getattr(actor, "sim_tracking_id", None)
+            if tracking_id is not None:
+                runner_ids[int(tracking_id)] = object_actor_id(actor)
+            else:
+                actor_id = object_actor_id(actor)
+                runner_ids[actor_id] = actor_id
+        if any(ref.tracking_id not in runner_ids for ref in pair):
+            return None
+        return runner_ids[pair[0].tracking_id], runner_ids[pair[1].tracking_id]
+
     @classmethod
     def _collision_position(
         cls,
         collision,
         sample: MonitorSample,
-        pair: tuple[int, int],
+        pair: tuple[int, int] | None,
     ) -> tuple[float | None, float | None, float | None, str, str]:
         direct = cls._direct_position(collision)
         if direct is not None:
             return (*direct, "collision", "")
+        if pair is None:
+            return None, None, None, "unavailable", ""
         bbox = cls._bbox_contact(sample, pair)
         if bbox is not None:
             x, y, source, region_json = bbox
@@ -165,8 +224,8 @@ class CollisionEventsRecorder(Recorder):
     ) -> tuple[float | None, float | None, float | None] | None:
         objects = getattr(sample.runtime_frame, "objects", None) or []
         positions = {}
-        for index, obj in enumerate(objects):
-            actor_id = object_actor_id(obj, index)
+        for obj in objects:
+            actor_id = object_actor_id(obj)
             if actor_id not in pair:
                 continue
             kinematic = object_kinematic(obj)
@@ -189,8 +248,8 @@ class CollisionEventsRecorder(Recorder):
     ) -> tuple[float, float, str, str] | None:
         objects = getattr(sample.runtime_frame, "objects", None) or []
         boxes = {}
-        for index, obj in enumerate(objects):
-            actor_id = object_actor_id(obj, index)
+        for obj in objects:
+            actor_id = object_actor_id(obj)
             if actor_id not in pair:
                 continue
             box = actor_box(obj)

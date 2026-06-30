@@ -5,12 +5,21 @@ from simcore.conditions import (
     ConditionNode,
     EvaluationResult,
 )
+from simcore.runtime_actors import (
+    ActorSelector,
+    CollisionActorRef,
+    collision_actor_ref,
+    parse_actor_selector,
+    selector_matches_ref,
+)
 
 
 class CollisionCondition(ConditionNode):
     def __init__(self, config: dict):
         super().__init__(config)
 
+        self.actor_a = self._parse_optional_selector(config, "actor_a")
+        self.actor_b = self._parse_optional_selector(config, "actor_b")
         self.actor_id_a = self._parse_optional_actor_id(
             config,
             primary_key="actor_id_a",
@@ -55,7 +64,9 @@ class CollisionCondition(ConditionNode):
     def reset(self):
         self.buffer.clear()
 
-    def _find_target_collision(self, collisions) -> tuple[int, int] | None:
+    def _find_target_collision(
+        self, collisions
+    ) -> tuple[CollisionActorRef, CollisionActorRef] | None:
         if not collisions:
             return None
 
@@ -67,15 +78,34 @@ class CollisionCondition(ConditionNode):
             ):
                 continue
 
-            actor_a = int(collision.actor_a)
-            actor_b = int(collision.actor_b)
+            actor_a = collision_actor_ref(collision.actor_a)
+            actor_b = collision_actor_ref(collision.actor_b)
             if self._matches_target(actor_a, actor_b):
-                return tuple(sorted((actor_a, actor_b)))
+                return tuple(sorted((actor_a, actor_b), key=lambda ref: ref.tracking_id))
 
         return None
 
-    def _matches_target(self, actor_a: int, actor_b: int) -> bool:
-        actors = {actor_a, actor_b}
+    def _matches_target(self, actor_a: CollisionActorRef, actor_b: CollisionActorRef) -> bool:
+        refs = (actor_a, actor_b)
+
+        if self.actor_a is not None or self.actor_b is not None:
+            if self.actor_a is not None and not any(
+                selector_matches_ref(self.actor_a, ref) for ref in refs
+            ):
+                return False
+            if self.actor_b is not None and not any(
+                selector_matches_ref(self.actor_b, ref) for ref in refs
+            ):
+                return False
+            if self.actor_a is not None and self.actor_b is not None:
+                return any(
+                    selector_matches_ref(self.actor_a, first)
+                    and selector_matches_ref(self.actor_b, second)
+                    for first, second in ((actor_a, actor_b), (actor_b, actor_a))
+                )
+            return True
+
+        actors = {actor_a.tracking_id, actor_b.tracking_id}
 
         if self.actor_id_a is None and self.actor_id_b is None:
             return True
@@ -86,10 +116,22 @@ class CollisionCondition(ConditionNode):
         return actors == {self.actor_id_a, self.actor_id_b}
 
     @staticmethod
-    def _triggered_detail(matched_pair: tuple[int, int]) -> str:
-        return f"Collision detected between actor {matched_pair[0]} and actor {matched_pair[1]}"
+    def _triggered_detail(
+        matched_pair: tuple[CollisionActorRef, CollisionActorRef],
+    ) -> str:
+        return (
+            f"Collision detected between actor {matched_pair[0].label} "
+            f"and actor {matched_pair[1].label}"
+        )
 
     def _not_triggered_detail(self) -> str:
+        if self.actor_a is not None or self.actor_b is not None:
+            labels = [
+                selector.role or selector.entity_name
+                for selector in (self.actor_a, self.actor_b)
+                if selector is not None
+            ]
+            return "No collision detected involving " + " and ".join(str(item) for item in labels)
         if self.actor_id_a is None and self.actor_id_b is None:
             return "No collision detected between any actors"
         if self.actor_id_a is not None and self.actor_id_b is None:
@@ -130,3 +172,9 @@ class CollisionCondition(ConditionNode):
                 f"CollisionCondition config '{source_key}' must be an integer, "
                 f"but got: {config.get(source_key)}"
             ) from exc
+
+    @staticmethod
+    def _parse_optional_selector(config: dict, key: str) -> ActorSelector | None:
+        if key not in config:
+            return None
+        return parse_actor_selector(config[key], field_name=key)

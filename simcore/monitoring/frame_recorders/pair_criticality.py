@@ -7,6 +7,7 @@ from simcore.metrics.pair_criticality import (
     parse_pair_criticality_options,
 )
 from simcore.monitoring.sample import MonitorSample
+from simcore.runtime_actors import parse_actor_binding
 
 from .base import FrameRecorder
 
@@ -34,10 +35,12 @@ DEFAULT_PAIR_CRITICALITY_FIELDS = (
 class PairCriticalityFrameRecorder(FrameRecorder):
     def __init__(self, config: dict):
         super().__init__(config)
-        if "actor_id_a" not in config or "actor_id_b" not in config:
-            raise ValueError("pair_criticality frame recorder requires actor_id_a and actor_id_b")
-        self.actor_id_a = int(config["actor_id_a"])
-        self.actor_id_b = int(config["actor_id_b"])
+        self.actor_a = parse_actor_binding(
+            config, selector_key="actor_a", legacy_keys=("actor_id_a",)
+        )
+        self.actor_b = parse_actor_binding(
+            config, selector_key="actor_b", legacy_keys=("actor_id_b",)
+        )
         self.lateral_threshold_m = parse_pair_criticality_options(
             config, owner="pair_criticality frame recorder"
         )
@@ -50,10 +53,14 @@ class PairCriticalityFrameRecorder(FrameRecorder):
         return self._fields
 
     def record(self, sample: MonitorSample) -> dict[str, Any]:
+        actor_id_a = self.actor_a.resolve(sample.runtime_frame)
+        actor_id_b = self.actor_b.resolve(sample.runtime_frame)
+        if actor_id_a is None or actor_id_b is None:
+            return {}
         result = compute_pair_criticality(
             getattr(sample.runtime_frame, "objects", None) or [],
-            self.actor_id_a,
-            self.actor_id_b,
+            actor_id_a,
+            actor_id_b,
             lateral_threshold_m=self.lateral_threshold_m,
         )
         if result is None:

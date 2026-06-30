@@ -39,12 +39,22 @@ The simulator wrapper:
     "url": "localhost:9083",
     "timeout": 100.0,
     "config_path": "/path/to/av.yaml",
-    "output_path": "/mnt/output"
+    "output_path": "/mnt/output",
+    "observation_identity": "none",
+    "observation_order": "stable"
   }
 }
 ```
 
 The AV wrapper follows the simulator wrapper lifecycle. After reset, the runner records the initial simulator frame at `t=0`. On every loop iteration, the runner sends the simulator observation to AV and receives the next control command.
+
+`observation_identity` controls privileged identity disclosure: `none` (default),
+`tracking_id`, or `full` (tracking ID plus XOSC entity name). `observation_order` is
+`stable` by default and may be set to `shuffle` to expose accidental list-position tracking while
+remaining reproducible for the same run/sample.
+
+Simulator frames contain an explicit ego and an unordered actor map. Stable AV presentation is
+derived from entity name/tracking ID by sim-core; protobuf map iteration order is never used.
 
 ## Loop Data Flow
 

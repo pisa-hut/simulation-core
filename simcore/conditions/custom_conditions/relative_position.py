@@ -8,25 +8,23 @@ from simcore.metrics.relative_position import (
     RelativePositionSelector,
     build_relative_position_selector,
     compute_relative_position,
-    parse_actor_id,
 )
+from simcore.runtime_actors import parse_actor_binding
 
 
 class RelativePositionCondition(ConditionNode):
     def __init__(self, config: dict):
         super().__init__(config)
 
-        self.source_actor_id = parse_actor_id(
+        self.source_actor = parse_actor_binding(
             config,
-            "source_actor_id",
-            "source_agent_id",
-            "source",
+            selector_key="source_actor",
+            legacy_keys=("source_actor_id", "source_agent_id", "source"),
         )
-        self.target_actor_id = parse_actor_id(
+        self.target_actor = parse_actor_binding(
             config,
-            "target_actor_id",
-            "target_agent_id",
-            "target",
+            selector_key="target_actor",
+            legacy_keys=("target_actor_id", "target_agent_id", "target"),
         )
         self.selector = build_relative_position_selector(config)
 
@@ -43,11 +41,16 @@ class RelativePositionCondition(ConditionNode):
     def put(self, data):
         runtime_frame = data[1]
         objects = getattr(runtime_frame, "objects", None) or []
+        source_actor_id = self.source_actor.resolve(runtime_frame)
+        target_actor_id = self.target_actor.resolve(runtime_frame)
+        if source_actor_id is None or target_actor_id is None:
+            self.buffer.append(None)
+            return
         self.buffer.append(
             compute_relative_position(
                 objects,
-                self.source_actor_id,
-                self.target_actor_id,
+                source_actor_id,
+                target_actor_id,
             )
         )
 
@@ -71,7 +74,7 @@ class RelativePositionCondition(ConditionNode):
                 ConditionCode.NOT_TRIGGERED,
                 (
                     f"Could not compute relative position for source actor "
-                    f"{self.source_actor_id} and target actor {self.target_actor_id}"
+                    f"{self.source_actor.label} and target actor {self.target_actor.label}"
                 ),
             )
 

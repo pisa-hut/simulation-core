@@ -136,6 +136,16 @@ class SimulationEngine:
         self._dt_s = runtime_spec.get("dt", None)
         if self._dt_s is None or self._dt_s <= 0:
             raise ValueError(f"Invalid dt value: {self._dt_s}. dt must be a positive number.")
+        self._observation_identity = str(
+            av_spec.get("observation_identity", "none")
+        ).lower()
+        if self._observation_identity not in {"none", "tracking_id", "full"}:
+            raise ValueError(
+                "av.observation_identity must be one of: none, tracking_id, full"
+            )
+        self._observation_order = str(av_spec.get("observation_order", "stable")).lower()
+        if self._observation_order not in {"stable", "shuffle"}:
+            raise ValueError("av.observation_order must be one of: stable, shuffle")
 
         self.job_id = task_spec.get("job_id", "unknown_job")
         self.output_base = Path(task_spec.get("output_dir", "./outputs")).expanduser().resolve()
@@ -500,10 +510,20 @@ class SimulationEngine:
                 sps,
                 sim_params if sim_params is not None else params,
             )
-            raw_obs = runtime_frame.objects if runtime_frame.objects else []
+            prepare_frame = getattr(self.monitor, "prepare_runtime_frame", None)
+            if callable(prepare_frame):
+                runtime_frame = prepare_frame(runtime_frame)
+                observation = self.monitor.actor_registry.prepare_observation(
+                    runtime_frame,
+                    identity_visibility=getattr(self, "_observation_identity", "none"),
+                    observation_order=getattr(self, "_observation_order", "stable"),
+                    shuffle_key=f"{self.job_id}:{sample_id or output_related}",
+                )
+            else:  # Lightweight test doubles predating the v2 frame contract.
+                observation = getattr(runtime_frame, "objects", None) or []
 
             logger.debug("Resetting AV...")
-            ctrl_for_sim = self.av.reset(output_related, sps, raw_obs)
+            ctrl_for_sim = self.av.reset(output_related, sps, observation)
 
             dt_s = self._dt_s
             dt_ns = int(dt_s * 1e9)
@@ -520,8 +540,17 @@ class SimulationEngine:
 
                 sim_time_ns += dt_ns
                 runtime_frame = self.sim.step(ctrl_for_sim, sim_time_ns)
-                raw_obs = runtime_frame.objects if runtime_frame.objects else []
-                ctrl_for_sim = self.av.step(raw_obs, sim_time_ns)
+                if callable(prepare_frame):
+                    runtime_frame = prepare_frame(runtime_frame)
+                    observation = self.monitor.actor_registry.prepare_observation(
+                        runtime_frame,
+                        identity_visibility=getattr(self, "_observation_identity", "none"),
+                        observation_order=getattr(self, "_observation_order", "stable"),
+                        shuffle_key=f"{self.job_id}:{sample_id or output_related}",
+                    )
+                else:
+                    observation = getattr(runtime_frame, "objects", None) or []
+                ctrl_for_sim = self.av.step(observation, sim_time_ns)
                 self.monitor.update(sim_time_ns, runtime_frame, ctrl_for_sim)
 
                 cur_time_s = time.monotonic()

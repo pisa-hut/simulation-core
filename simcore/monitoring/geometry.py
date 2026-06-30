@@ -16,6 +16,13 @@ class ActorGeometry:
     width_m: float | None
     height_m: float | None
     footprint: tuple[tuple[float, float], ...] | None = None
+    reference_point: str | None = None
+    center_offset_x: float = 0.0
+    center_offset_y: float = 0.0
+    center_offset_z: float = 0.0
+    roll_offset: float = 0.0
+    pitch_offset: float = 0.0
+    yaw_offset: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -54,12 +61,20 @@ def actor_geometry(actor: Any) -> ActorGeometry | None:
 
     shape_type = _shape_type_name(getattr(shape, "type", None))
     footprint = _footprint(shape)
+    pose = getattr(shape, "center", shape)
     return ActorGeometry(
         shape_type=shape_type,
         length_m=length,
         width_m=width,
         height_m=height,
         footprint=footprint,
+        reference_point=_optional_text(getattr(shape, "reference_point", None)),
+        center_offset_x=_float_or_zero(pose, "center_offset_x", "x"),
+        center_offset_y=_float_or_zero(pose, "center_offset_y", "y"),
+        center_offset_z=_float_or_zero(pose, "center_offset_z", "z"),
+        roll_offset=_float_or_zero(pose, "roll_offset", "roll"),
+        pitch_offset=_float_or_zero(pose, "pitch_offset", "pitch"),
+        yaw_offset=_float_or_zero(pose, "yaw_offset", "yaw"),
     )
 
 
@@ -73,13 +88,33 @@ def actor_box(actor: Any) -> OrientedBox | None:
     y = float_attr(kinematic, "y")
     if x is None or y is None:
         return None
+    actor_yaw = float_attr(kinematic, "yaw") or 0.0
+    cos_yaw = cos(actor_yaw)
+    sin_yaw = sin(actor_yaw)
     return OrientedBox(
-        center_x=x,
-        center_y=y,
-        yaw=float_attr(kinematic, "yaw") or 0.0,
+        center_x=x + geometry.center_offset_x * cos_yaw - geometry.center_offset_y * sin_yaw,
+        center_y=y + geometry.center_offset_x * sin_yaw + geometry.center_offset_y * cos_yaw,
+        yaw=actor_yaw + geometry.yaw_offset,
         length_m=geometry.length_m,
         width_m=geometry.width_m,
     )
+
+
+def _optional_text(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def _float_or_zero(value: Any, *names: str) -> float:
+    for name in names:
+        raw = getattr(value, name, None)
+        if raw is not None:
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
 
 
 def estimate_contact(box_a: OrientedBox, box_b: OrientedBox) -> ContactEstimate:

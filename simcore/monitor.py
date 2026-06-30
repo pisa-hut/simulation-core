@@ -17,6 +17,7 @@ from simcore.monitoring.recorder_registry import build_recorders
 from simcore.monitoring.sample import MonitorSample
 from simcore.monitoring.summary_recorder_registry import build_summary_recorders
 from simcore.monitoring.summary_recorders import SummaryContext
+from simcore.runtime_actors import EpisodeActorRegistry, NormalizedRuntimeFrame
 from simcore.sim_wrapper import SimWrapper
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ class Monitor:
         }
         self.current_output_related = ""
         self._concrete_outcomes: list[ConcreteOutcome] = []
+        self.actor_registry = EpisodeActorRegistry()
 
         if config_path:
             self.logging_cfg = self._load_mapping_config(config_path, "monitor logging")
@@ -222,6 +224,7 @@ class Monitor:
             self.summary_recorders = build_summary_recorders(summary_recorder_configs)
 
     def update(self, sim_time_ns: int, runtime_frame: Any, control: Any) -> None:
+        runtime_frame = self.prepare_runtime_frame(runtime_frame)
         self.condition_context["current_sim_time_ns"] = int(sim_time_ns)
         sample = MonitorSample(
             step_index=self.step_index,
@@ -245,6 +248,13 @@ class Monitor:
                 recorder.update(sample)
 
         self.step_index += 1
+
+    def prepare_runtime_frame(self, runtime_frame: Any) -> Any:
+        if isinstance(runtime_frame, NormalizedRuntimeFrame):
+            return runtime_frame
+        if hasattr(runtime_frame, "ego") and hasattr(runtime_frame, "agents"):
+            return self.actor_registry.normalize(runtime_frame)
+        return runtime_frame
 
     def should_stop(self, check_external_quit: bool = True) -> bool:
         self.condition_context["current_sim_time_ns"] = int(self.final_sim_time_ns)
@@ -307,6 +317,7 @@ class Monitor:
         self.condition_context["current_sim_time_ns"] = 0
         self.wall_start_time_s = monotonic()
         self.overwrite_summary = overwrite_summary
+        self.actor_registry.reset()
 
         if self.root:
             self.root.reset()

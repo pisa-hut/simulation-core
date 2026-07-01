@@ -76,12 +76,10 @@ class PairClearanceFrameRecorder(FrameRecorder):
         side_y = cos(yaw_a)
         longitudinal_distance_m = dx * forward_x + dy * forward_y
         lateral_distance_m = dx * side_x + dy * side_y
-        longitudinal_clearance_m = abs(longitudinal_distance_m) - (
-            box_a.length_m + box_b.length_m
-        ) / 2.0
-        lateral_clearance_m = abs(lateral_distance_m) - (
-            box_a.width_m + box_b.width_m
-        ) / 2.0
+        longitudinal_clearance_m = (
+            abs(longitudinal_distance_m) - (box_a.length_m + box_b.length_m) / 2.0
+        )
+        lateral_clearance_m = abs(lateral_distance_m) - (box_a.width_m + box_b.width_m) / 2.0
         clearance_m = max(longitudinal_clearance_m, lateral_clearance_m)
         values = {
             "center_distance_m": center_distance_m,
@@ -91,6 +89,8 @@ class PairClearanceFrameRecorder(FrameRecorder):
             "clearance_status": "valid",
         }
         return {field: values[field] for field in self._fields}
+
+
 def _value_for_missing_actor(field: str) -> Any:
     return "missing_actor" if field == "clearance_status" else None
 

@@ -14,13 +14,9 @@ from simcore.sampler.space import ParameterSpace
 from simcore.utils.util import get_cfg
 
 BUILTIN_SAMPLERS = {
-    "adaptive_boundary": (
-        "simcore.sampler.feedback_boundary_sampler:FeedbackBoundarySampler"
-    ),
+    "adaptive_boundary": ("simcore.sampler.feedback_boundary_sampler:FeedbackBoundarySampler"),
     "explicit": "simcore.sampler.explicit_sampler:ExplicitSampler",
-    "feedback_boundary": (
-        "simcore.sampler.feedback_boundary_sampler:FeedbackBoundarySampler"
-    ),
+    "feedback_boundary": ("simcore.sampler.feedback_boundary_sampler:FeedbackBoundarySampler"),
     "grid": "simcore.sampler.grid_search_sampler:GridSearchSampler",
     "grid_search": "simcore.sampler.grid_search_sampler:GridSearchSampler",
     "lhs": "simcore.sampler.lhs_sampler:LHSSampler",

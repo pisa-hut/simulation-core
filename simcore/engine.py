@@ -136,13 +136,9 @@ class SimulationEngine:
         self._dt_s = runtime_spec.get("dt", None)
         if self._dt_s is None or self._dt_s <= 0:
             raise ValueError(f"Invalid dt value: {self._dt_s}. dt must be a positive number.")
-        self._observation_identity = str(
-            av_spec.get("observation_identity", "none")
-        ).lower()
+        self._observation_identity = str(av_spec.get("observation_identity", "none")).lower()
         if self._observation_identity not in {"none", "tracking_id", "full"}:
-            raise ValueError(
-                "av.observation_identity must be one of: none, tracking_id, full"
-            )
+            raise ValueError("av.observation_identity must be one of: none, tracking_id, full")
         self._observation_order = str(av_spec.get("observation_order", "stable")).lower()
         if self._observation_order not in {"stable", "shuffle"}:
             raise ValueError("av.observation_order must be one of: stable, shuffle")
@@ -238,9 +234,7 @@ class SimulationEngine:
                 sampler_spec.get("name") in {"adaptive_boundary", "feedback_boundary"}
                 and self._permutation is not None
             ):
-                raise ValueError(
-                    "runtime.permutation is not supported by feedback-aware samplers"
-                )
+                raise ValueError("runtime.permutation is not supported by feedback-aware samplers")
             self.max_sampler_iterations = sampler_spec.get("max_samples")
         else:
             logger.debug("No sampler source resolved; running as a single concrete scenario.")

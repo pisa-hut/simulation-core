@@ -265,9 +265,7 @@ def _sha256_directory(path: Path) -> str:
 def _execution_metadata(spec: dict[str, Any], map_spec: dict[str, Any]) -> dict[str, Any]:
     metadata = dict(spec.get("metadata", {}) or {})
     metadata.update(spec.get("task", {}).get("metadata", {}) or {})
-    metadata = {
-        key: value for key, value in metadata.items() if key not in ANALYSIS_POLICY_KEYS
-    }
+    metadata = {key: value for key, value in metadata.items() if key not in ANALYSIS_POLICY_KEYS}
     metadata.setdefault("map_name", map_spec.get("name"))
     metadata["ego_agent_id"] = _ego_agent_id(spec, metadata)
     return metadata

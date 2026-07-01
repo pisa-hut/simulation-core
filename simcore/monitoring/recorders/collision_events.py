@@ -120,9 +120,7 @@ class CollisionEventsRecorder(Recorder):
         return actors == {self.actor_id_a, self.actor_id_b}
 
     @classmethod
-    def _collision_pair(
-        cls, collision
-    ) -> tuple[CollisionActorRef, CollisionActorRef] | None:
+    def _collision_pair(cls, collision) -> tuple[CollisionActorRef, CollisionActorRef] | None:
         if not getattr(collision, "occurred", False):
             return None
         if not cls._has_actor(collision, "actor_a") or not cls._has_actor(collision, "actor_b"):

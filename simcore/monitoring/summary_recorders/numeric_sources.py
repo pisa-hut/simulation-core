@@ -63,9 +63,7 @@ class NumericValueSource(ABC):
 
 class KinematicValueSource(NumericValueSource):
     def __init__(self, config: dict):
-        self.actor = parse_actor_binding(
-            config, selector_key="actor", legacy_keys=("actor_id",)
-        )
+        self.actor = parse_actor_binding(config, selector_key="actor", legacy_keys=("actor_id",))
         raw_field = _required_field(config, "kinematic source")
         self.field = KINEMATIC_FIELD_ALIASES.get(raw_field, raw_field)
         _validate_field(self.field, KINEMATIC_FIELDS, "kinematic source")

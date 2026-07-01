@@ -2,11 +2,13 @@
 #
 # A list is treated as a default top-level OR. Each top-level item should set
 # outcome: Success, Fail, or Invalid.
+# This file includes every registered leaf condition type. Replace
+# `CutInVehicle` and the example parameter with values from your scenario.
 
 - type: collision
   name: collision_guard
   outcome: Fail
-  actor_a: {role: ego}
+  actor_a: { role: ego }
   max_buffer_size: 1
   # Optional simulation-time delay before reporting the stop.
   # delay_ms: 500
@@ -16,16 +18,38 @@
   outcome: Invalid
   timeout_ms: 45000
 
-# - type: pair_ttc
-#   name: low_ttc_ego_to_cutin
-#   outcome: Fail
-#   actor_a: {role: ego}
-#   actor_b: {entity_name: CutInVehicle}
-#   threshold_s: 1.0
-#   lateral_threshold_m: 2.0
+- type: pair_ttc
+  name: low_ttc_ego_to_cutin
+  outcome: Fail
+  actor_a: { role: ego }
+  actor_b: { entity_name: CutInVehicle }
+  threshold_s: 1.0
+  lateral_threshold_m: 2.0
+
+- type: kinematic_threshold
+  name: ego_overspeed
+  outcome: Fail
+  actors:
+    - { role: ego }
+  metric: speed
+  rule: gt
+  value: 50.0
+
+- type: parameter_expression
+  name: invalid_example_parameter
+  outcome: Invalid
+  # Unknown parameters do not trigger; replace with sampled parameter names.
+  expression: "example_parameter < 0"
+
+- type: relative_position
+  name: cutin_is_in_front_of_ego
+  outcome: Fail
+  source_actor: { role: ego }
+  target_actor: { entity_name: CutInVehicle }
+  direction: front
 
 - type: reach_target_position
   name: ego_reaches_goal
   outcome: Success
-  target: ego
+  actor: { role: ego }
   distance_threshold_m: 2.0

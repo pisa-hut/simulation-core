@@ -80,7 +80,9 @@ class PairTTCCondition(ConditionNode):
         if latest_result is None:
             return self.result(
                 ConditionCode.NOT_TRIGGERED,
-                (f"Could not compute TTC for actor {self.actor_a.label} and actor {self.actor_b.label}"),
+                (
+                    f"Could not compute TTC for actor {self.actor_a.label} and actor {self.actor_b.label}"
+                ),
             )
 
         return self.result(

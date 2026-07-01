@@ -199,9 +199,7 @@ def test_kinematic_condition_resolves_entity_name_to_runner_actor() -> None:
 
 def test_identity_columns_use_runner_id_and_preserve_simulator_identity() -> None:
     registry = EpisodeActorRegistry()
-    normalized = registry.normalize(
-        frame(agents={44: wrapped("CutInVehicle", state(4.0))})
-    )
+    normalized = registry.normalize(frame(agents={44: wrapped("CutInVehicle", state(4.0))}))
     recorder = AgentStatesRecorder({"type": "agent_states", "name": "states"})
 
     rows = recorder.record(MonitorSample(0, 0, normalized, None))

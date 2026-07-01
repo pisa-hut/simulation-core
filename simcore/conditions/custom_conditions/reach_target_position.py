@@ -26,7 +26,7 @@ class ReachTargetPositionCondition(ConditionNode):
                 self.actor.selector and self.actor.selector.role == "ego"
             ):
                 raise ValueError(
-                    "ReachTargetPositionCondition requires 'target_position' for non-ego agents"
+                    "ReachTargetPositionCondition requires 'target_position' for non-ego actors"
                 )
             self.target_position = self._target_position_from_sps(config)
 
@@ -114,7 +114,7 @@ class ReachTargetPositionCondition(ConditionNode):
             return ActorBinding(runner_id=int(raw_value))
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                "ReachTargetPositionCondition target must be 'ego' or an integer actor/agent id, "
+                "ReachTargetPositionCondition legacy target must be 'ego' or an integer actor ID, "
                 f"but got: {raw_value}"
             ) from exc
 

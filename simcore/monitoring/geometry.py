@@ -112,7 +112,7 @@ def _float_or_zero(value: Any, *names: str) -> float:
         if raw is not None:
             try:
                 return float(raw)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 return 0.0
     return 0.0
 
@@ -217,8 +217,14 @@ def closest_points_between_polygons(
     segment_pair = closest_segments_between_polygons(polygon_a, polygon_b)
     if segment_pair is not None:
         segment_a, segment_b = segment_pair
-        mid_a = ((segment_a[0][0] + segment_a[1][0]) / 2.0, (segment_a[0][1] + segment_a[1][1]) / 2.0)
-        mid_b = ((segment_b[0][0] + segment_b[1][0]) / 2.0, (segment_b[0][1] + segment_b[1][1]) / 2.0)
+        mid_a = (
+            (segment_a[0][0] + segment_a[1][0]) / 2.0,
+            (segment_a[0][1] + segment_a[1][1]) / 2.0,
+        )
+        mid_b = (
+            (segment_b[0][0] + segment_b[1][0]) / 2.0,
+            (segment_b[0][1] + segment_b[1][1]) / 2.0,
+        )
         return mid_a[0], mid_a[1], mid_b[0], mid_b[1]
 
     best = None
@@ -239,7 +245,13 @@ def closest_points_between_polygons(
 def closest_segments_between_polygons(
     polygon_a: list[tuple[float, float]],
     polygon_b: list[tuple[float, float]],
-) -> tuple[tuple[tuple[float, float], tuple[float, float]], tuple[tuple[float, float], tuple[float, float]]] | None:
+) -> (
+    tuple[
+        tuple[tuple[float, float], tuple[float, float]],
+        tuple[tuple[float, float], tuple[float, float]],
+    ]
+    | None
+):
     best = None
     for segment_a in polygon_segments(polygon_a):
         for segment_b in polygon_segments(polygon_b):
@@ -248,8 +260,14 @@ def closest_segments_between_polygons(
                 continue
             overlap_a, overlap_b = candidate
             distance = squared_distance(
-                ((overlap_a[0][0] + overlap_a[1][0]) / 2.0, (overlap_a[0][1] + overlap_a[1][1]) / 2.0),
-                ((overlap_b[0][0] + overlap_b[1][0]) / 2.0, (overlap_b[0][1] + overlap_b[1][1]) / 2.0),
+                (
+                    (overlap_a[0][0] + overlap_a[1][0]) / 2.0,
+                    (overlap_a[0][1] + overlap_a[1][1]) / 2.0,
+                ),
+                (
+                    (overlap_b[0][0] + overlap_b[1][0]) / 2.0,
+                    (overlap_b[0][1] + overlap_b[1][1]) / 2.0,
+                ),
             )
             if best is None or distance < best[0]:
                 best = (distance, overlap_a, overlap_b)
@@ -267,10 +285,13 @@ def polygon_segments(
 def parallel_overlap_segments(
     segment_a: tuple[tuple[float, float], tuple[float, float]],
     segment_b: tuple[tuple[float, float], tuple[float, float]],
-) -> tuple[
-    tuple[tuple[float, float], tuple[float, float]],
-    tuple[tuple[float, float], tuple[float, float]],
-] | None:
+) -> (
+    tuple[
+        tuple[tuple[float, float], tuple[float, float]],
+        tuple[tuple[float, float], tuple[float, float]],
+    ]
+    | None
+):
     (a1, a2), (b1, b2) = segment_a, segment_b
     ax = a2[0] - a1[0]
     ay = a2[1] - a1[1]
@@ -363,14 +384,8 @@ def line_intersection(
     denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
     if abs(denominator) < EPSILON:
         return p2
-    px = (
-        (x1 * y2 - y1 * x2) * (x3 - x4)
-        - (x1 - x2) * (x3 * y4 - y3 * x4)
-    ) / denominator
-    py = (
-        (x1 * y2 - y1 * x2) * (y3 - y4)
-        - (y1 - y2) * (x3 * y4 - y3 * x4)
-    ) / denominator
+    px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denominator
+    py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denominator
     return px, py
 
 
@@ -380,10 +395,9 @@ def _inside(
     clip_end: tuple[float, float],
     orientation: float,
 ) -> bool:
-    cross = (
-        (clip_end[0] - clip_start[0]) * (point[1] - clip_start[1])
-        - (clip_end[1] - clip_start[1]) * (point[0] - clip_start[0])
-    )
+    cross = (clip_end[0] - clip_start[0]) * (point[1] - clip_start[1]) - (
+        clip_end[1] - clip_start[1]
+    ) * (point[0] - clip_start[0])
     return orientation * cross >= -EPSILON
 
 
@@ -434,6 +448,6 @@ def _finite_float(value: Any) -> float | None:
         return None
     try:
         parsed = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return parsed

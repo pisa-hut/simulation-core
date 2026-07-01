@@ -1,6 +1,8 @@
 # Example monitor logging config.
 #
 # Logging only writes monitor outputs and never controls scenario stop.
+# This file includes every registered frame, table, summary, and numeric-source
+# type. Replace `CutInVehicle` with an XOSC ScenarioObject name.
 
 logging:
   enabled: true
@@ -49,6 +51,11 @@ logging:
   # Variable-cardinality logs are written as separate tables.
   # `agent_states.csv` is long-table format: one row per agent per logged frame.
   tables:
+    - type: ego_state
+      name: ego_state
+      every_n_steps: 1
+      output: ego_state.csv
+
     - type: agent_states
       name: agent_states
       every_n_steps: 1
@@ -116,6 +123,16 @@ logging:
           source_actor: {role: ego}
           target_actor: {entity_name: CutInVehicle}
         aggregations: [min, max, mean]
+
+      - type: numeric_summary
+        name: ego_to_cutin_ttc_source
+        source:
+          type: pair_ttc
+          field: ttc_s
+          actor_a: {role: ego}
+          actor_b: {entity_name: CutInVehicle}
+          lateral_threshold_m: 2.0
+        aggregations: [min]
 
       - type: numeric_summary
         name: ego_to_cutin_thw

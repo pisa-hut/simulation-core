@@ -74,14 +74,38 @@ one reset episode and must not be placed in reusable condition files. Numeric `a
 `actor_id_a`, and `actor_id_b` forms remain only for compatibility with legacy frame/config tests;
 new-contract configurations must use semantic selectors.
 
+`role` currently supports only `ego`. Although the collision API also labels non-ego actors as
+`AGENT`, `{role: agent}` is not a supported selector because it does not uniquely identify one
+actor. Use `entity_name` for a specific non-ego XOSC actor. Legacy integer IDs select runner-local
+`agent_id` values (`ego = 0`) and are not stable across resets or simulators. Simulator
+`tracking_id` is recorded for diagnostics but is not accepted as a condition/metric selector.
+
 Selector field names depend on the component:
 
 | Component | Selector fields |
 | --- | --- |
-| Pair conditions/frame recorders/collision summaries | `actor_a`, `actor_b` |
-| Kinematic source and max-speed summary | `actor` |
-| Relative-position condition/source | `source_actor`, `target_actor` |
-| Kinematic-threshold condition | `agents: [{entity_name: ...}]` or `agents: any` |
+| One actor | `actor` |
+| A set of actors | `actors` or `actors: any` |
+| Unordered/symmetric pair | `actor_a`, `actor_b` |
+| Directed pair | `source_actor`, `target_actor` |
+
+Canonical monitor configs use `actor` terminology consistently:
+
+```yaml
+actor: {role: ego}
+actors:
+  - {role: ego}
+  - {entity_name: CutInVehicle}
+actor_a: {role: ego}
+actor_b: {entity_name: CutInVehicle}
+source_actor: {role: ego}
+target_actor: {entity_name: CutInVehicle}
+```
+
+`agents`, `actor_ids`, `agent_ids`, `actor_id`, `agent_id`, `target`, and `target_agent`
+are legacy compatibility aliases. Do not use them in new configuration. In particular,
+`reach_target_position.target` means the actor being checked, not its destination; use `actor`
+for identity and `target_position` for the destination coordinate.
 
 ## Logging Output
 
@@ -124,7 +148,8 @@ Stop conditions can be configured as a list. The monitor wraps the list in a def
 - type: reach_target_position
   name: ego_reaches_goal
   outcome: Success
-  target: ego
+  actor: {role: ego}
+  distance_threshold_m: 2.0
 ```
 
 Top-level stop conditions should set `outcome`:
@@ -169,6 +194,50 @@ Logical nodes:
 | `pair_ttc` | Stop when pair TTC falls below `threshold_s`. |
 
 When a condition stops the scenario, the summary receives `run.stop_condition`, `run.test_outcome`, and detailed `run.stop_reason`.
+
+## Reach Target Position
+
+Use `actor` to select who is checked and `target_position` to specify where that actor must go.
+For ego, omitting `target_position` reuses `scenario.goal_config.position` from the runner spec:
+
+```yaml
+- type: reach_target_position
+  name: ego_reaches_scenario_goal
+  outcome: Success
+  actor: {role: ego}
+  distance_threshold_m: 2.0
+```
+
+An explicit world coordinate can be written as named fields or as
+`value: [x, y, z, heading, pitch, roll]`:
+
+```yaml
+- type: reach_target_position
+  name: cutin_reaches_merge_point
+  outcome: Success
+  actor: {entity_name: CutInVehicle}
+  target_position:
+    type: WorldPosition
+    x: 82.36
+    y: -59.56
+    z: 0.0
+  distance_threshold_m: 1.0
+```
+
+A lane coordinate accepts named fields or `value: [road_id, lane_id, s, offset]`:
+
+```yaml
+target_position:
+  type: LanePosition
+  road_id: 12
+  lane_id: -1
+  s: 14.0
+  offset: 1.92
+```
+
+Lane positions are converted through the configured OpenDRIVE map. The condition compares XY
+distance only; Z and orientation do not affect triggering. Non-ego actors must always provide an
+explicit `target_position`.
 
 ## Stop Condition Delay
 
@@ -237,15 +306,15 @@ For the previous point-to-point radial closing behavior:
 
 ```yaml
 - type: kinematic_threshold
-  name: any_agent_y_too_large
-  agents: any
+  name: any_actor_y_too_large
+  actors: any
   metric: y
   rule: gt
   value: [10.0, 0.0]
 
 - type: kinematic_threshold
   name: cutin_z_out_of_range
-  agents:
+  actors:
     - entity_name: CutInVehicle
   metric: z
   rule: not_between

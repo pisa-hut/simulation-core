@@ -76,7 +76,7 @@ def control_parts(control: Any) -> tuple[str, dict[str, Any]]:
     if hasattr(control, "mode") and hasattr(control, "payload"):
         try:
             mode = control_pb2.CtrlMode.Name(int(control.mode)).lower()
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             mode = str(control.mode).lower()
         try:
             payload = MessageToDict(
@@ -96,7 +96,7 @@ def first_finite(
     for name in aliases:
         try:
             value = float(payload[name])
-        except (KeyError, TypeError, ValueError):
+        except KeyError, TypeError, ValueError:
             continue
         if math.isfinite(value):
             return value

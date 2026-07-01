@@ -560,9 +560,7 @@ class Monitor:
                 wall_time_ms=wall_time_ms,
                 total_steps=self.step_index,
                 metrics={
-                    key: value
-                    for key, value in metrics.items()
-                    if not key.startswith("run.")
+                    key: value for key, value in metrics.items() if not key.startswith("run.")
                 },
             )
         )

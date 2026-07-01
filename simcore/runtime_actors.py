@@ -246,9 +246,7 @@ class EpisodeActorRegistry:
     ) -> PreparedObservation:
         visibility = identity_visibility.lower()
         if visibility not in {"none", "tracking_id", "full"}:
-            raise ValueError(
-                "av.observation_identity must be one of: none, tracking_id, full"
-            )
+            raise ValueError("av.observation_identity must be one of: none, tracking_id, full")
         order = observation_order.lower()
         if order not in {"stable", "shuffle"}:
             raise ValueError("av.observation_order must be one of: stable, shuffle")
@@ -345,7 +343,9 @@ def _extract_simulator_objects(
     if not objects:
         raise RuntimeFrameContractError("RuntimeFrame must contain an explicit ego actor")
     extracted = [(_explicit_object_id(obj), _optional_name(obj), obj) for obj in objects]
-    ego_candidates = [item for item in extracted if item[0] == 0 or getattr(item[2], "is_ego", False)]
+    ego_candidates = [
+        item for item in extracted if item[0] == 0 or getattr(item[2], "is_ego", False)
+    ]
     if len(ego_candidates) != 1:
         raise RuntimeFrameContractError(
             "legacy RuntimeFrame objects require exactly one explicit ego (actor_id=0 or is_ego)"

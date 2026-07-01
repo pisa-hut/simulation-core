@@ -100,7 +100,9 @@ class FeedbackBoundarySampler(Sampler):
         self._duplicate_tolerance = float(duplicate_tolerance)
         self._rng = random.Random(random_seed)
         self._numeric_bounds = tuple(self._numeric_bounds_for(spec) for spec in self.specs)
-        if not any(bounds is not None and bounds[0] != bounds[1] for bounds in self._numeric_bounds):
+        if not any(
+            bounds is not None and bounds[0] != bounds[1] for bounds in self._numeric_bounds
+        ):
             raise ValueError(
                 "FeedbackBoundarySampler requires at least one non-constant numeric parameter"
             )
@@ -351,9 +353,7 @@ class FeedbackBoundarySampler(Sampler):
             normalized.append((float(params[spec.name]) - lower) / (upper - lower))
         return tuple(normalized)
 
-    def _distance(
-        self, left: FeedbackRecord, right: FeedbackRecord
-    ) -> float | None:
+    def _distance(self, left: FeedbackRecord, right: FeedbackRecord) -> float | None:
         squared = 0.0
         used_dimension = False
         for index, spec in enumerate(self.specs):
@@ -369,9 +369,7 @@ class FeedbackBoundarySampler(Sampler):
             used_dimension = True
         return math.sqrt(squared) if used_dimension else None
 
-    def _midpoint(
-        self, left: dict[str, Any], right: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    def _midpoint(self, left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any] | None:
         params = {}
         for index, spec in enumerate(self.specs):
             if self._numeric_bounds[index] is None:
@@ -395,9 +393,7 @@ class FeedbackBoundarySampler(Sampler):
             value = float(candidate[spec.name]) + self._rng.gauss(
                 0.0, self._perturbation_scale * width
             )
-            candidate[spec.name] = self._cast_candidate(
-                spec, min(max(value, lower), upper)
-            )
+            candidate[spec.name] = self._cast_candidate(spec, min(max(value, lower), upper))
         return candidate
 
     @staticmethod
@@ -439,8 +435,7 @@ class FeedbackBoundarySampler(Sampler):
         if spec.bounds is not None and spec.param_type in {"double", "float", "int", "integer"}:
             return float(spec.bounds[0]), float(spec.bounds[1])
         if spec.values and all(
-            isinstance(value, (int, float)) and not isinstance(value, bool)
-            for value in spec.values
+            isinstance(value, (int, float)) and not isinstance(value, bool) for value in spec.values
         ):
             return float(min(spec.values)), float(max(spec.values))
         return None
@@ -450,9 +445,13 @@ class FeedbackBoundarySampler(Sampler):
         for key, value in metrics.items():
             normalized = key.lower()
             if (
-                normalized in aliases
-                or any(normalized.endswith(f".{alias}") for alias in aliases)
-            ) and value is not None and value != "":
+                (
+                    normalized in aliases
+                    or any(normalized.endswith(f".{alias}") for alias in aliases)
+                )
+                and value is not None
+                and value != ""
+            ):
                 return value
         return None
 
@@ -470,7 +469,7 @@ class FeedbackBoundarySampler(Sampler):
             return False
         try:
             return bool(RULE_OPERATORS[rule["operator"]](float(value), float(rule["value"])))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return False
 
     @staticmethod

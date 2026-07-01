@@ -4,12 +4,18 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import yaml
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.struct_pb2 import Struct
 from pisa_api import control_pb2
 
+from simcore.conditions.condition_registry import CONDITION_REGISTRY
 from simcore.execution import ExecResult, RetryHint, ShouldQuitResult
 from simcore.monitor import Monitor
+from simcore.monitoring.frame_recorder_registry import FRAME_RECORDER_REGISTRY
+from simcore.monitoring.recorder_registry import RECORDER_REGISTRY
+from simcore.monitoring.summary_recorder_registry import SUMMARY_RECORDER_REGISTRY
+from simcore.monitoring.summary_recorders.numeric_sources import SOURCE_BUILDERS
 
 
 class FakeEndpoint:
@@ -115,9 +121,7 @@ def read_csv(path: Path) -> list[dict[str, str]]:
 def test_documented_monitor_examples_use_valid_semantic_selectors(tmp_path: Path) -> None:
     docs_dir = Path(__file__).parents[1] / "docs" / "monitor" / "examples"
     sps = SimpleNamespace(
-        ego=SimpleNamespace(
-            goal=SimpleNamespace(position=SimpleNamespace(x=10.0, y=20.0, z=0.0))
-        )
+        ego=SimpleNamespace(goal=SimpleNamespace(position=SimpleNamespace(x=10.0, y=20.0, z=0.0)))
     )
 
     monitor = Monitor(
@@ -133,6 +137,32 @@ def test_documented_monitor_examples_use_valid_semantic_selectors(tmp_path: Path
     assert monitor.table_recorders
     assert monitor.summary_recorders
     assert monitor.root is not None
+
+
+def test_documented_examples_cover_every_registered_type() -> None:
+    docs_dir = Path(__file__).parents[1] / "docs" / "monitor" / "examples"
+    stop_config = yaml.safe_load((docs_dir / "stop_condition_config_example.yaml").read_text())
+    logging_config = yaml.safe_load((docs_dir / "logging_config_example.yaml").read_text())[
+        "logging"
+    ]
+
+    assert {item["type"] for item in stop_config} == set(CONDITION_REGISTRY)
+    assert {item["type"] for item in logging_config["frame"]["recorders"]} == set(
+        FRAME_RECORDER_REGISTRY
+    )
+    assert {item["type"] for item in logging_config["tables"]} == set(RECORDER_REGISTRY)
+
+    configured_summaries = {item["type"] for item in logging_config["summary"]["recorders"]}
+    if logging_config["summary"].get("include_basic", True):
+        configured_summaries.add("basic_summary")
+    assert configured_summaries == set(SUMMARY_RECORDER_REGISTRY)
+
+    configured_sources = {
+        item["source"]["type"]
+        for item in logging_config["summary"]["recorders"]
+        if item["type"] == "numeric_summary"
+    }
+    assert configured_sources == set(SOURCE_BUILDERS)
 
 
 def make_control(mode: int, payload: dict | None = None) -> control_pb2.CtrlCmd:

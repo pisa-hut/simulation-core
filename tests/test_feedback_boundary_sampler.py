@@ -52,9 +52,7 @@ def test_feedback_sampler_uses_boundary_midpoint_after_initial_feedback() -> Non
     assert boundary.params == pytest.approx(
         {
             "agent_speed": (safe.params["agent_speed"] + unsafe.params["agent_speed"]) / 2,
-            "cut_in_distance": (
-                safe.params["cut_in_distance"] + unsafe.params["cut_in_distance"]
-            )
+            "cut_in_distance": (safe.params["cut_in_distance"] + unsafe.params["cut_in_distance"])
             / 2,
         }
     )

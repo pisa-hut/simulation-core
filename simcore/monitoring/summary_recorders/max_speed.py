@@ -14,9 +14,14 @@ MAX_SPEED_FIELDS = ("max_speed_mps",)
 class MaxSpeedSummaryRecorder(SummaryRecorder):
     def __init__(self, config: dict):
         super().__init__(config)
-        if "actor_id" not in config:
-            raise ValueError("max_speed summary recorder requires actor_id")
-        self.source = KinematicValueSource({"actor_id": config["actor_id"], "field": "speed"})
+        if "actor" not in config and "actor_id" not in config:
+            raise ValueError("max_speed summary recorder requires actor or actor_id")
+        source_config = {"field": "speed"}
+        if "actor" in config:
+            source_config["actor"] = config["actor"]
+        else:
+            source_config["actor_id"] = config["actor_id"]
+        self.source = KinematicValueSource(source_config)
         self.accumulator = NumericAccumulator(["max"])
 
     def fields(self) -> tuple[str, ...]:

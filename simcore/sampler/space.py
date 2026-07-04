@@ -127,6 +127,9 @@ class Sample:
 class SampleResult:
     params: ParamDict
     status: str | None = None
+    test_outcome: str | None = None
+    stop_condition: str | None = None
+    reason: str = ""
     metrics: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 

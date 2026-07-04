@@ -20,7 +20,9 @@ sampler-specific settings.
 - `explicit`: runs the exact listed sample ids and parameter changes from a YAML/JSON file.
 - `grid` / `grid_search`: enumerates the Cartesian product of discrete parameter values.
 - `lhs`: Latin hypercube sampling over the configured parameter space.
+- `random`: seeded uniform random sampling over the configured parameter space.
 - `sobol`: Sobol sequence sampling over the configured parameter space.
+- `feedback_boundary` / `adaptive_boundary`: feedback-driven boundary refinement.
 
 ## Common Fields
 
@@ -50,6 +52,24 @@ sampler-specific settings.
 
 - `n_samples`: number of generated samples.
 - `skip`: number of initial Sobol points to skip. Default is `1`.
+
+`random`:
+
+- `n_samples`: number of generated samples.
+- `seed`: optional deterministic random seed.
+
+`feedback_boundary` / `adaptive_boundary`:
+
+- `total_samples`: total adaptive budget.
+- `initial_samples`: initial exploration count; defaults to `min(8, total_samples)`.
+- `initial_sampler`: `sobol`, `lhs`, or `random`.
+- `min_ttc_threshold`: optional unsafe TTC threshold.
+- `unsafe_conditions`: optional metric/operator/value rules.
+- `opposite_neighbors`: nearest opposite-label neighbors retained per sample.
+- `candidates_per_pair`: midpoint/perturbation candidates generated per local pair.
+- `uncertainty_weight`, `novelty_weight`, `coverage_weight`: candidate score weights.
+- `boundary_candidate_count`, `perturbation_scale`, `exploration_ratio`,
+  `random_seed`, and `duplicate_tolerance`: remaining boundary search controls.
 
 `native` / `openscenario_native`:
 

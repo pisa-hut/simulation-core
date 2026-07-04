@@ -2,6 +2,7 @@ import importlib
 
 SUMMARY_RECORDER_REGISTRY = {
     "basic_summary": "simcore.monitoring.summary_recorders.basic_summary:BasicSummaryRecorder",
+    "collision": "simcore.monitoring.summary_recorders.collision:CollisionSummaryRecorder",
     "max_speed": "simcore.monitoring.summary_recorders.max_speed:MaxSpeedSummaryRecorder",
     "min_ttc": "simcore.monitoring.summary_recorders.min_ttc:MinTTCSummaryRecorder",
     "numeric_summary": (

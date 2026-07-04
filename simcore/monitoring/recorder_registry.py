@@ -3,7 +3,10 @@ import importlib
 RECORDER_REGISTRY = {
     "ego_state": "simcore.monitoring.recorders.ego_state:EgoStateRecorder",
     "agent_states": "simcore.monitoring.recorders.agent_states:AgentStatesRecorder",
+    "agent_geometry": "simcore.monitoring.recorders.agent_geometry:AgentGeometryRecorder",
     "collision_events": "simcore.monitoring.recorders.collision_events:CollisionEventsRecorder",
+    "control_commands": "simcore.monitoring.recorders.control_commands:ControlCommandsRecorder",
+    "scenario_events": "simcore.monitoring.recorders.scenario_events:ScenarioEventsRecorder",
 }
 
 

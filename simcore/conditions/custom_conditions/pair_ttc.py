@@ -9,18 +9,21 @@ from simcore.metrics.ttc import (
     compute_pair_ttc,
     parse_pair_ttc_options,
 )
+from simcore.runtime_actors import parse_actor_binding
 
 
 class PairTTCCondition(ConditionNode):
     def __init__(self, config: dict):
         super().__init__(config)
-        if "actor_id_a" not in config or "actor_id_b" not in config:
-            raise ValueError("PairTTCCondition requires actor_id_a and actor_id_b")
         if "threshold_s" not in config:
             raise ValueError("PairTTCCondition requires threshold_s")
 
-        self.actor_id_a = int(config["actor_id_a"])
-        self.actor_id_b = int(config["actor_id_b"])
+        self.actor_a = parse_actor_binding(
+            config, selector_key="actor_a", legacy_keys=("actor_id_a",)
+        )
+        self.actor_b = parse_actor_binding(
+            config, selector_key="actor_b", legacy_keys=("actor_id_b",)
+        )
         self.threshold_s = float(config["threshold_s"])
         if self.threshold_s < 0:
             raise ValueError("PairTTCCondition threshold_s must be >= 0")
@@ -42,13 +45,20 @@ class PairTTCCondition(ConditionNode):
     def put(self, data):
         runtime_frame = data[1]
         objects = getattr(runtime_frame, "objects", None) or []
+        collisions = getattr(runtime_frame, "collision", None) or []
+        actor_id_a = self.actor_a.resolve(runtime_frame)
+        actor_id_b = self.actor_b.resolve(runtime_frame)
+        if actor_id_a is None or actor_id_b is None:
+            self.buffer.append(None)
+            return
         self.buffer.append(
             compute_pair_ttc(
                 objects,
-                self.actor_id_a,
-                self.actor_id_b,
+                actor_id_a,
+                actor_id_b,
                 mode=self.mode,
                 lateral_threshold_m=self.lateral_threshold_m,
+                collisions=collisions,
             )
         )
 
@@ -70,7 +80,9 @@ class PairTTCCondition(ConditionNode):
         if latest_result is None:
             return self.result(
                 ConditionCode.NOT_TRIGGERED,
-                (f"Could not compute TTC for actor {self.actor_id_a} and actor {self.actor_id_b}"),
+                (
+                    f"Could not compute TTC for actor {self.actor_a.label} and actor {self.actor_b.label}"
+                ),
             )
 
         return self.result(

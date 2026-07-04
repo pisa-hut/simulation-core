@@ -6,13 +6,14 @@ from typing import Any
 from simcore.conditions import ConditionCode, ConditionNode, EvaluationResult
 from simcore.metrics.actors import float_attr, iter_actor_states, object_kinematic
 from simcore.metrics.rules import NumericRule
+from simcore.runtime_actors import ActorSelector, find_actor_by_selector, parse_actor_selector
 
 
 class KinematicThresholdCondition(ConditionNode):
     def __init__(self, config: dict):
         super().__init__(config)
 
-        self.actor_ids = self._parse_actor_ids(config)
+        self.actor_ids, self.actor_selectors = self._parse_actor_filters(config)
         self.metric = self._parse_metric(config)
         self.rule = self._parse_rule(config)
 
@@ -28,7 +29,15 @@ class KinematicThresholdCondition(ConditionNode):
 
     def put(self, data):
         runtime_frame = data[1]
-        self.buffer.append(getattr(runtime_frame, "objects", None) or [])
+        actor_ids = self.actor_ids
+        if self.actor_selectors:
+            resolved = {
+                actor.agent_id
+                for selector in self.actor_selectors
+                if (actor := find_actor_by_selector(runtime_frame, selector)) is not None
+            }
+            actor_ids = frozenset((*self.actor_ids, *resolved))
+        self.buffer.append((getattr(runtime_frame, "objects", None) or [], actor_ids))
 
     def evaluate(self) -> EvaluationResult:
         if not self.buffer:
@@ -37,9 +46,9 @@ class KinematicThresholdCondition(ConditionNode):
         latest_values: list[tuple[int, float]] = []
         matched_actor_count = 0
 
-        for objects in self.buffer:
+        for objects, actor_ids in self.buffer:
             for actor_id, obj in iter_actor_states(objects):
-                if not self._matches_actor_filter(actor_id):
+                if actor_ids is not None and actor_id not in actor_ids:
                     continue
 
                 matched_actor_count += 1
@@ -82,42 +91,51 @@ class KinematicThresholdCondition(ConditionNode):
         )
 
     @staticmethod
-    def _parse_actor_ids(config: dict) -> frozenset[int] | None:
-        raw_agents = config.get("agents", config.get("actor_ids", config.get("agent_ids")))
-        if raw_agents is None:
-            raw_agents = config.get("actor_id", config.get("agent_id"))
+    def _parse_actor_filters(
+        config: dict,
+    ) -> tuple[frozenset[int] | None, tuple[ActorSelector, ...]]:
+        raw_actors = config.get(
+            "actors",
+            config.get("agents", config.get("actor_ids", config.get("agent_ids"))),
+        )
+        if raw_actors is None:
+            raw_actors = config.get("actor_id", config.get("agent_id"))
 
-        if raw_agents is None or _is_any_agent(raw_agents):
-            return None
+        if raw_actors is None or _is_any_actor(raw_actors):
+            return None, ()
 
-        if isinstance(raw_agents, int):
-            return frozenset({raw_agents})
+        if isinstance(raw_actors, int):
+            return frozenset({raw_actors}), ()
 
-        if isinstance(raw_agents, str):
-            return frozenset({int(raw_agents)})
+        if isinstance(raw_actors, str):
+            try:
+                return frozenset({int(raw_actors)}), ()
+            except ValueError:
+                return frozenset(), (parse_actor_selector(raw_actors, field_name="actors"),)
 
-        if not isinstance(raw_agents, (list, tuple, set)):
+        if not isinstance(raw_actors, (list, tuple, set)):
             raise ValueError(
-                "KinematicThresholdCondition 'agents' must be 'any', an integer, "
-                "or a list of integers"
+                "KinematicThresholdCondition 'actors' must be 'any', an actor selector, "
+                "an integer legacy actor ID, or a list of those values"
             )
 
         actor_ids = set()
-        for raw_agent in raw_agents:
-            if _is_any_agent(raw_agent):
-                return None
-            actor_ids.add(int(raw_agent))
-        if not actor_ids:
-            raise ValueError("KinematicThresholdCondition 'agents' must not be empty")
-        return frozenset(actor_ids)
-
-    def _matches_actor_filter(self, actor_id: int) -> bool:
-        return self.actor_ids is None or actor_id in self.actor_ids
+        selectors = []
+        for raw_actor in raw_actors:
+            if _is_any_actor(raw_actor):
+                return None, ()
+            try:
+                actor_ids.add(int(raw_actor))
+            except TypeError, ValueError:
+                selectors.append(parse_actor_selector(raw_actor, field_name="actors"))
+        if not actor_ids and not selectors:
+            raise ValueError("KinematicThresholdCondition 'actors' must not be empty")
+        return frozenset(actor_ids), tuple(selectors)
 
     def _triggered_detail(self, actor_id: int, metric_value: float) -> str:
         return (
             f"Actor {actor_id} kinematic.{self.metric} matched rule {self.rule.describe()}: "
-            f"value={metric_value:.6g}; agents={self._agent_description()}"
+            f"value={metric_value:.6g}; actors={self._actor_description()}"
         )
 
     def _not_triggered_detail(
@@ -127,7 +145,7 @@ class KinematicThresholdCondition(ConditionNode):
     ) -> str:
         if matched_actor_count == 0:
             return (
-                f"No actors matched agents={self._agent_description()} while checking "
+                f"No actors matched actors={self._actor_description()} while checking "
                 f"kinematic.{self.metric} rule {self.rule.describe()}"
             )
         if not latest_values:
@@ -144,11 +162,15 @@ class KinematicThresholdCondition(ConditionNode):
             f"latest values: {values}"
         )
 
-    def _agent_description(self) -> str:
+    def _actor_description(self) -> str:
         if self.actor_ids is None:
             return "any"
-        return "[" + ", ".join(str(actor_id) for actor_id in sorted(self.actor_ids)) + "]"
+        values = [str(actor_id) for actor_id in sorted(self.actor_ids)]
+        values.extend(
+            selector.role or selector.entity_name or "unknown" for selector in self.actor_selectors
+        )
+        return "[" + ", ".join(values) + "]"
 
 
-def _is_any_agent(raw_value: Any) -> bool:
+def _is_any_actor(raw_value: Any) -> bool:
     return isinstance(raw_value, str) and raw_value.strip().lower() in {"any", "*", "all"}

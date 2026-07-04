@@ -72,6 +72,7 @@ class FakeSampler:
             sample if isinstance(sample, Sample) else Sample(params=sample) for sample in samples
         ]
         self.index = 0
+        self.updates = []
 
     def total_samples(self):
         return len(self.samples)
@@ -82,6 +83,9 @@ class FakeSampler:
         sample = self.samples[self.index]
         self.index += 1
         return sample
+
+    def update(self, sample, result):
+        self.updates.append((sample, result))
 
 
 def test_scenario_source_base_path_uses_scenario_folder(tmp_path: Path) -> None:
@@ -672,6 +676,44 @@ def test_run_logical_emits_each_outcome_exactly_once(tmp_path: Path) -> None:
     assert emitted == ["iteration_1", "iteration_2"]
     # The leading tick is the count-only "started, total=N" announcement.
     assert updates[0].outcome is None and updates[0].finished == 0
+
+
+def test_run_logical_updates_sampler_with_concrete_outcome_metrics(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    sampler = FakeSampler([{"speed": 10}])
+    engine.param_sampler = sampler
+    engine.max_sampler_iterations = None
+    engine.sps = None
+    engine._permutation = None
+    outcomes: list[ConcreteOutcome] = []
+    engine.monitor.concrete_outcomes = lambda: list(outcomes)
+
+    def concrete_wrapper(output_related, sps, params=None, *, sim_params=None):
+        outcomes.append(
+            ConcreteOutcome(
+                concrete_key=output_related,
+                status="finished",
+                test_outcome="fail",
+                reason="low TTC",
+                stop_condition="ttc_guard",
+                params=params,
+                final_sim_time_ms=100.0,
+                wall_time_ms=10.0,
+                total_steps=10,
+                metrics={"ego_ttc.min_ttc_s": 0.4},
+            )
+        )
+
+    engine.concrete_wrapper = concrete_wrapper
+
+    engine.run_logical()
+
+    assert len(sampler.updates) == 1
+    sample, result = sampler.updates[0]
+    assert sample.params == {"speed": 10}
+    assert result.status == "finished"
+    assert result.test_outcome == "fail"
+    assert result.metrics == {"ego_ttc.min_ttc_s": 0.4}
 
 
 def test_run_logical_emits_total_none_for_open_ended_sampler(tmp_path: Path) -> None:

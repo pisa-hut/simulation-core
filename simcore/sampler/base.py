@@ -48,6 +48,9 @@ class Sampler:
     def remaining_samples(self) -> int | None:
         return None
 
+    def update(self, sample: Sample, result: SampleResult) -> None:
+        return None
+
 
 __all__ = [
     "ParamDict",

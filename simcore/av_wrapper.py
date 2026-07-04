@@ -1,7 +1,6 @@
 import contextlib
 import logging
 import time
-from typing import Any
 
 import grpc
 from google.protobuf.struct_pb2 import Struct
@@ -14,6 +13,7 @@ from pisa_api import (
 )
 
 from simcore.execution import ShouldQuitResult, classify_grpc_error
+from simcore.runtime_actors import PreparedObservation
 from simcore.utils.sps import ScenarioPack
 from simcore.utils.util import get_cfg
 
@@ -86,30 +86,28 @@ class AVWrapper:
         self,
         output_dir: str,
         sps: ScenarioPack,
-        init_obs: dict[str, Any] | None = None,
+        init_obs: PreparedObservation,
     ):
         self._sps = sps
         self._ensure_ready()
         req = av_server_pb2.AvServerMessages.ResetRequest(
             output_dir=path_pb2.Path(path=str(output_dir)),
             scenario_pack=self._sps.to_protobuf(),
-            initial_observation=init_obs or {},
         )
+        self._copy_observation(req.initial_observation, init_obs)
         try:
             resp = self._stub.Reset(req, timeout=self._timeout)
             return resp.ctrl_cmd
         except grpc.RpcError as e:
             raise classify_grpc_error(e) from e
 
-    def step(self, obs, time_stamp_ns: int):
+    def step(self, obs: PreparedObservation, time_stamp_ns: int):
         self._ensure_ready()
 
-        req = av_server_pb2.AvServerMessages.StepRequest(
-            observation=obs, timestamp_ns=int(time_stamp_ns)
-        )
+        req = av_server_pb2.AvServerMessages.StepRequest(timestamp_ns=int(time_stamp_ns))
+        self._copy_observation(req.observation, obs)
         try:
             resp = self._stub.Step(req, timeout=self._timeout)
-            # StepResponse { repeated ObjectState objects }
             return resp.ctrl_cmd
         except grpc.RpcError as e:
             raise classify_grpc_error(e) from e
@@ -147,6 +145,24 @@ class AVWrapper:
     def _ensure_ready(self):
         if self._stub is None or self._channel is None or not self._connected:
             raise RuntimeError("AvWrapper not initialized. Call init() first.")
+
+    @staticmethod
+    def _copy_observation(target, observation: PreparedObservation) -> None:
+        """Populate the breaking v2 Observation protobuf without importing it eagerly."""
+
+        if not hasattr(target, "ego") or not hasattr(target, "agents"):
+            raise RuntimeError(
+                "Installed pisa-api does not provide the v2 Observation contract. "
+                "Upgrade pisa-api and the AV server together."
+            )
+        target.ego.CopyFrom(observation.ego)
+        for observed in observation.agents:
+            entry = target.agents.add()
+            entry.state.CopyFrom(observed.state)
+            if observed.tracking_id is not None:
+                entry.tracking_id = observed.tracking_id
+            if observed.entity_name is not None:
+                entry.entity_name = observed.entity_name
 
     def _close(self):
         if self._channel is not None:

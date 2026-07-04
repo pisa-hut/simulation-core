@@ -19,8 +19,18 @@ def make_object(actor_id: int, x: float, y: float, speed: float, yaw: float = 0.
     )
 
 
-def make_runtime_frame(*objects):
-    return SimpleNamespace(objects=list(objects))
+class FakeCollision:
+    def __init__(self, *, occurred: bool, actor_a: int, actor_b: int) -> None:
+        self.occurred = occurred
+        self.actor_a = actor_a
+        self.actor_b = actor_b
+
+    def HasField(self, field_name: str) -> bool:
+        return hasattr(self, field_name)
+
+
+def make_runtime_frame(*objects, collision=None):
+    return SimpleNamespace(objects=list(objects), collision=list(collision or []))
 
 
 def test_pair_ttc_condition_triggers_below_threshold() -> None:
@@ -168,3 +178,31 @@ def test_pair_ttc_condition_requires_threshold() -> None:
                 "actor_id_b": 12,
             }
         )
+
+
+def test_pair_ttc_condition_triggers_when_matching_collision_occurs() -> None:
+    condition = PairTTCCondition(
+        {
+            "type": "pair_ttc",
+            "actor_id_a": 0,
+            "actor_id_b": 12,
+            "threshold_s": 1.0,
+        }
+    )
+
+    condition.put(
+        (
+            0,
+            make_runtime_frame(
+                make_object(0, 0.0, 0.0, speed=0.0),
+                make_object(12, 5.0, 0.0, speed=10.0),
+                collision=[FakeCollision(occurred=True, actor_a=12, actor_b=0)],
+            ),
+            None,
+        )
+    )
+
+    result = condition.evaluate()
+
+    assert result.code == ConditionCode.TRIGGERED
+    assert "ttc=0.000s" in result.detail

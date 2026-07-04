@@ -85,7 +85,9 @@ iteration_<id>/
 - `explicit`: runs exact listed sample ids and parameter changes.
 - `grid` / `grid_search`: enumerates a Cartesian product.
 - `lhs`: Latin hypercube sampling.
+- `random`: seeded uniform random sampling.
 - `sobol`: Sobol sequence sampling.
+- `feedback_boundary` / `adaptive_boundary`: feedback-driven boundary refinement.
 
 ## Source Types
 
@@ -285,6 +287,85 @@ skip: 1
 ```
 
 LHS and Sobol default to at most 16 samples when `n_samples` is omitted.
+
+### Random
+
+```yaml
+source:
+  type: param_range
+  path: range.yaml
+n_samples: 50
+seed: 42
+```
+
+### Feedback Boundary
+
+```yaml
+source:
+  type: param_range
+  path: range.yaml
+total_samples: 64
+initial_samples: 12
+initial_sampler: sobol
+min_ttc_threshold: 1.5
+boundary_candidate_count: 32
+opposite_neighbors: 3
+candidates_per_pair: 2
+uncertainty_weight: 0.35
+novelty_weight: 0.25
+coverage_weight: 0.40
+perturbation_scale: 0.05
+exploration_ratio: 0.2
+random_seed: 42
+duplicate_tolerance: 1.0e-6
+unsafe_conditions:
+  - metric: ego_clearance.min
+    operator: lt
+    value: 1.0
+```
+
+The first samples come from `sobol`, `lhs`, or `random`. Once both SAFE and UNSAFE
+results exist, each sample selects its nearest opposite-label neighbors in normalized
+parameter space. The sampler generates a small number of midpoint candidates per local
+pair, then scores the complete pool using:
+
+```text
+score =
+    uncertainty_weight * transition_width
+  + novelty_weight * distance_from_existing_samples
+  + coverage_weight * distance_from_previous_boundary_samples
+```
+
+Each score component is min-max normalized within the current candidate pool. This
+keeps refinement focused on uncertain transitions while spreading samples across
+different sections or disconnected components of the boundary. A configurable
+fraction remains global exploration.
+
+Classification precedence is execution error, invalid outcome, explicit fail outcome,
+collision, minimum TTC/custom unsafe rules, then explicit success. A normally finished
+scenario with an unknown outcome is SAFE only when every configured metric rule can be
+evaluated and none is unsafe.
+
+Feedback metrics come from monitor summary recorders. For collision and TTC rules,
+configure summary recorders such as:
+
+```yaml
+logging:
+  summary:
+    recorders:
+      - type: collision
+        name: ego_collision
+        actor_id_a: 0
+      - type: min_ttc
+        name: ego_ttc
+        actor_id_a: 0
+        actor_id_b: 1
+```
+
+Numeric parameters participate in normalized boundary distance. Categorical parameters
+must have the same value on a SAFE/UNSAFE pair; otherwise that pair is not interpolated.
+`runtime.permutation` is not supported because adaptive sample N depends on results from
+the preceding samples.
 
 ## Examples
 

@@ -19,6 +19,9 @@ class SummaryContext:
     speedup: float
     params: dict[str, Any]
     job_id: str
+    sample_id: str
+    attempt: int
+    parameter_hash: str
 
 
 class SummaryRecorder(ABC):

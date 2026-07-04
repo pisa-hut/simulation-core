@@ -4,9 +4,14 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from simcore.metrics.actors import find_actor, float_attr, object_kinematic
+from simcore.metrics.pair_criticality import (
+    compute_pair_criticality,
+    parse_pair_criticality_options,
+)
 from simcore.metrics.relative_position import compute_relative_position
 from simcore.metrics.ttc import compute_pair_ttc, parse_pair_ttc_options
 from simcore.monitoring.sample import MonitorSample
+from simcore.runtime_actors import parse_actor_binding
 
 KINEMATIC_FIELDS = (
     "x",
@@ -25,6 +30,18 @@ PAIR_TTC_FIELDS = (
     "closing_speed_mps",
     "longitudinal_distance_m",
     "lateral_distance_m",
+)
+PAIR_CRITICALITY_FIELDS = (
+    "distance_m",
+    "longitudinal_distance_m",
+    "lateral_distance_m",
+    "closing_speed_mps",
+    "relative_longitudinal_speed_mps",
+    "relative_lateral_speed_mps",
+    "relative_longitudinal_acceleration_mps2",
+    "relative_lateral_acceleration_mps2",
+    "thw_s",
+    "drac_mps2",
 )
 RELATIVE_POSITION_FIELDS = (
     "relative_angle_deg",
@@ -46,13 +63,14 @@ class NumericValueSource(ABC):
 
 class KinematicValueSource(NumericValueSource):
     def __init__(self, config: dict):
-        self.actor_id = _required_int(config, "actor_id", "kinematic source")
+        self.actor = parse_actor_binding(config, selector_key="actor", legacy_keys=("actor_id",))
         raw_field = _required_field(config, "kinematic source")
         self.field = KINEMATIC_FIELD_ALIASES.get(raw_field, raw_field)
         _validate_field(self.field, KINEMATIC_FIELDS, "kinematic source")
 
     def read(self, sample: MonitorSample) -> float | None:
-        actor = find_actor(_objects(sample), self.actor_id)
+        actor_id = self.actor.resolve(sample.runtime_frame)
+        actor = find_actor(_objects(sample), actor_id) if actor_id is not None else None
         if actor is None:
             return None
         return float_attr(object_kinematic(actor), self.field)
@@ -60,8 +78,12 @@ class KinematicValueSource(NumericValueSource):
 
 class PairTTCValueSource(NumericValueSource):
     def __init__(self, config: dict):
-        self.actor_id_a = _required_int(config, "actor_id_a", "pair_ttc source")
-        self.actor_id_b = _required_int(config, "actor_id_b", "pair_ttc source")
+        self.actor_a = parse_actor_binding(
+            config, selector_key="actor_a", legacy_keys=("actor_id_a",)
+        )
+        self.actor_b = parse_actor_binding(
+            config, selector_key="actor_b", legacy_keys=("actor_id_b",)
+        )
         self.field = _required_field(config, "pair_ttc source")
         _validate_field(self.field, PAIR_TTC_FIELDS, "pair_ttc source")
         options = parse_pair_ttc_options(config, owner="pair_ttc source")
@@ -69,11 +91,45 @@ class PairTTCValueSource(NumericValueSource):
         self.lateral_threshold_m = options.lateral_threshold_m
 
     def read(self, sample: MonitorSample) -> float | None:
+        runtime_frame = sample.runtime_frame
+        actor_id_a = self.actor_a.resolve(runtime_frame)
+        actor_id_b = self.actor_b.resolve(runtime_frame)
+        if actor_id_a is None or actor_id_b is None:
+            return None
         result = compute_pair_ttc(
             _objects(sample),
-            self.actor_id_a,
-            self.actor_id_b,
+            actor_id_a,
+            actor_id_b,
             mode=self.mode,
+            lateral_threshold_m=self.lateral_threshold_m,
+            collisions=getattr(runtime_frame, "collision", None) or [],
+        )
+        return _result_float(result, self.field)
+
+
+class PairCriticalityValueSource(NumericValueSource):
+    def __init__(self, config: dict):
+        self.actor_a = parse_actor_binding(
+            config, selector_key="actor_a", legacy_keys=("actor_id_a",)
+        )
+        self.actor_b = parse_actor_binding(
+            config, selector_key="actor_b", legacy_keys=("actor_id_b",)
+        )
+        self.field = _required_field(config, "pair_criticality source")
+        _validate_field(self.field, PAIR_CRITICALITY_FIELDS, "pair_criticality source")
+        self.lateral_threshold_m = parse_pair_criticality_options(
+            config, owner="pair_criticality source"
+        )
+
+    def read(self, sample: MonitorSample) -> float | None:
+        actor_id_a = self.actor_a.resolve(sample.runtime_frame)
+        actor_id_b = self.actor_b.resolve(sample.runtime_frame)
+        if actor_id_a is None or actor_id_b is None:
+            return None
+        result = compute_pair_criticality(
+            _objects(sample),
+            actor_id_a,
+            actor_id_b,
             lateral_threshold_m=self.lateral_threshold_m,
         )
         return _result_float(result, self.field)
@@ -81,30 +137,31 @@ class PairTTCValueSource(NumericValueSource):
 
 class RelativePositionValueSource(NumericValueSource):
     def __init__(self, config: dict):
-        self.source_actor_id = _required_int(
-            config,
-            "source_actor_id",
-            "relative_position source",
+        self.source_actor = parse_actor_binding(
+            config, selector_key="source_actor", legacy_keys=("source_actor_id",)
         )
-        self.target_actor_id = _required_int(
-            config,
-            "target_actor_id",
-            "relative_position source",
+        self.target_actor = parse_actor_binding(
+            config, selector_key="target_actor", legacy_keys=("target_actor_id",)
         )
         self.field = _required_field(config, "relative_position source")
         _validate_field(self.field, RELATIVE_POSITION_FIELDS, "relative_position source")
 
     def read(self, sample: MonitorSample) -> float | None:
+        source_actor_id = self.source_actor.resolve(sample.runtime_frame)
+        target_actor_id = self.target_actor.resolve(sample.runtime_frame)
+        if source_actor_id is None or target_actor_id is None:
+            return None
         result = compute_relative_position(
             _objects(sample),
-            self.source_actor_id,
-            self.target_actor_id,
+            source_actor_id,
+            target_actor_id,
         )
         return _result_float(result, self.field)
 
 
 SOURCE_BUILDERS = {
     "kinematic": KinematicValueSource,
+    "pair_criticality": PairCriticalityValueSource,
     "pair_ttc": PairTTCValueSource,
     "relative_position": RelativePositionValueSource,
 }
@@ -129,12 +186,6 @@ def build_numeric_value_source(config: Any) -> NumericValueSource:
 
 def _objects(sample: MonitorSample) -> Any:
     return getattr(sample.runtime_frame, "objects", None) or []
-
-
-def _required_int(config: dict, field: str, owner: str) -> int:
-    if field not in config:
-        raise ValueError(f"{owner} requires {field}")
-    return int(config[field])
 
 
 def _required_field(config: dict, owner: str) -> str:

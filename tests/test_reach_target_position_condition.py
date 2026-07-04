@@ -52,7 +52,7 @@ def test_reach_target_position_triggers_for_ego_with_sps_goal() -> None:
         }
     )
 
-    condition.put((0, make_runtime_frame(make_object(10.3, 20.4)), None))
+    condition.put((0, make_runtime_frame(make_object(10.3, 20.4, actor_id=0)), None))
     result = condition.evaluate()
 
     assert result.code == ConditionCode.TRIGGERED
@@ -89,7 +89,7 @@ def test_reach_target_position_uses_configured_world_position_for_agent() -> Non
     assert position_parser.parsed_positions[0][1] == "target_position"
 
 
-def test_reach_target_position_defaults_actor_id_to_object_index() -> None:
+def test_reach_target_position_requires_explicit_actor_identity() -> None:
     condition = ReachTargetPositionCondition(
         {
             "type": "reach_target_position",
@@ -110,9 +110,8 @@ def test_reach_target_position_defaults_actor_id_to_object_index() -> None:
             None,
         )
     )
-    result = condition.evaluate()
-
-    assert result.code == ConditionCode.TRIGGERED
+    with pytest.raises(ValueError, match="missing an explicit actor"):
+        condition.evaluate()
 
 
 def test_reach_target_position_does_not_trigger_outside_threshold() -> None:
@@ -126,7 +125,7 @@ def test_reach_target_position_does_not_trigger_outside_threshold() -> None:
         }
     )
 
-    condition.put((0, make_runtime_frame(make_object(9.0, 20.0)), None))
+    condition.put((0, make_runtime_frame(make_object(9.0, 20.0, actor_id=0)), None))
     result = condition.evaluate()
 
     assert result.code == ConditionCode.NOT_TRIGGERED

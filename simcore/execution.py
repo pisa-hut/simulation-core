@@ -24,6 +24,7 @@ class ConcreteOutcome:
     final_sim_time_ms: float
     wall_time_ms: float
     total_steps: int
+    metrics: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

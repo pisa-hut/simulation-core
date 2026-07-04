@@ -1,0 +1,6 @@
+source:
+  type: param_range
+  path: range.yaml
+max_samples: null
+n_samples: 16
+seed: 42

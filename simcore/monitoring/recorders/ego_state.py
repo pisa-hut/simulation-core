@@ -61,7 +61,7 @@ class EgoStateRecorder(Recorder):
 
     def _find_ego(self, sample: MonitorSample):
         objects = getattr(sample.runtime_frame, "objects", None) or []
-        for index, obj in enumerate(objects):
-            if object_actor_id(obj, index) == self.actor_id:
+        for obj in objects:
+            if object_actor_id(obj) == self.actor_id:
                 return obj
         return None

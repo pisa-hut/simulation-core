@@ -7,6 +7,7 @@ from simcore.metrics.ttc import (
     parse_pair_ttc_options,
 )
 from simcore.monitoring.sample import MonitorSample
+from simcore.runtime_actors import parse_actor_binding
 
 from .base import FrameRecorder
 
@@ -16,21 +17,29 @@ PAIR_TTC_FIELDS = (
     "lateral_distance_m",
     "closing_speed_mps",
     "ttc_s",
+    "ttc_valid",
+    "ttc_status",
+    "in_lateral_conflict",
 )
 DEFAULT_PAIR_TTC_FIELDS = (
     "distance_m",
     "closing_speed_mps",
     "ttc_s",
+    "ttc_valid",
+    "ttc_status",
+    "in_lateral_conflict",
 )
 
 
 class PairTTCFrameRecorder(FrameRecorder):
     def __init__(self, config: dict):
         super().__init__(config)
-        if "actor_id_a" not in config or "actor_id_b" not in config:
-            raise ValueError("pair_ttc frame recorder requires actor_id_a and actor_id_b")
-        self.actor_id_a = int(config["actor_id_a"])
-        self.actor_id_b = int(config["actor_id_b"])
+        self.actor_a = parse_actor_binding(
+            config, selector_key="actor_a", legacy_keys=("actor_id_a",)
+        )
+        self.actor_b = parse_actor_binding(
+            config, selector_key="actor_b", legacy_keys=("actor_id_b",)
+        )
         options = parse_pair_ttc_options(config, owner="pair_ttc frame recorder")
         self.mode = options.mode
         self.lateral_threshold_m = options.lateral_threshold_m
@@ -44,12 +53,18 @@ class PairTTCFrameRecorder(FrameRecorder):
 
     def record(self, sample: MonitorSample) -> dict[str, Any]:
         objects = getattr(sample.runtime_frame, "objects", None) or []
+        collisions = getattr(sample.runtime_frame, "collision", None) or []
+        actor_id_a = self.actor_a.resolve(sample.runtime_frame)
+        actor_id_b = self.actor_b.resolve(sample.runtime_frame)
+        if actor_id_a is None or actor_id_b is None:
+            return {}
         result = compute_pair_ttc(
             objects,
-            self.actor_id_a,
-            self.actor_id_b,
+            actor_id_a,
+            actor_id_b,
             mode=self.mode,
             lateral_threshold_m=self.lateral_threshold_m,
+            collisions=collisions,
         )
         if result is None:
             return {}
@@ -60,5 +75,8 @@ class PairTTCFrameRecorder(FrameRecorder):
             "lateral_distance_m": result.lateral_distance_m,
             "closing_speed_mps": result.closing_speed_mps,
             "ttc_s": result.ttc_s,
+            "ttc_valid": result.ttc_valid,
+            "ttc_status": result.ttc_status,
+            "in_lateral_conflict": result.in_lateral_conflict,
         }
         return {field: values[field] for field in self._fields}

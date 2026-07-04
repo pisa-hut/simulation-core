@@ -5,6 +5,8 @@ from math import hypot
 from typing import Any
 
 from simcore.conditions import ConditionCode, ConditionNode, EvaluationResult
+from simcore.metrics.actors import find_actor
+from simcore.runtime_actors import ActorBinding, parse_actor_binding
 from simcore.utils.position import Position
 
 DEFAULT_DISTANCE_THRESHOLD_M = 0.5
@@ -16,13 +18,15 @@ class ReachTargetPositionCondition(ConditionNode):
         super().__init__(config)
 
         self.distance_threshold_m = self._parse_distance_threshold(config)
-        self.actor_id = self._parse_actor_id(config)
+        self.actor = self._parse_actor(config)
         self.target_position = self._parse_target_position(config)
 
         if self.target_position is None:
-            if self.actor_id != EGO_ACTOR_ID:
+            if self.actor.runner_id != EGO_ACTOR_ID and not (
+                self.actor.selector and self.actor.selector.role == "ego"
+            ):
                 raise ValueError(
-                    "ReachTargetPositionCondition requires 'target_position' for non-ego agents"
+                    "ReachTargetPositionCondition requires 'target_position' for non-ego actors"
                 )
             self.target_position = self._target_position_from_sps(config)
 
@@ -38,14 +42,16 @@ class ReachTargetPositionCondition(ConditionNode):
 
     def put(self, data):
         runtime_frame = data[1]
-        self.buffer.append(getattr(runtime_frame, "objects", []))
+        self.buffer.append(runtime_frame)
 
     def evaluate(self) -> EvaluationResult:
         if not self.buffer:
             return self.result(ConditionCode.NOT_EVALUATED, "No data to evaluate")
 
-        for objects in self.buffer:
-            actor_position = self._find_actor_position(objects)
+        for runtime_frame in self.buffer:
+            actor_id = self.actor.resolve(runtime_frame)
+            objects = getattr(runtime_frame, "objects", [])
+            actor_position = self._find_actor_position(objects, actor_id)
             if actor_position is None:
                 continue
 
@@ -54,7 +60,7 @@ class ReachTargetPositionCondition(ConditionNode):
                 return self.result(
                     ConditionCode.TRIGGERED,
                     (
-                        f"Actor {self.actor_id} reached target position: "
+                        f"Actor {self.actor.label} reached target position: "
                         f"distance={distance_m:.3f}m threshold={self.distance_threshold_m:.3f}m"
                     ),
                 )
@@ -62,7 +68,7 @@ class ReachTargetPositionCondition(ConditionNode):
         return self.result(
             ConditionCode.NOT_TRIGGERED,
             (
-                f"Actor {self.actor_id} has not reached target position "
+                f"Actor {self.actor.label} has not reached target position "
                 f"within {self.distance_threshold_m:.3f}m"
             ),
         )
@@ -91,22 +97,24 @@ class ReachTargetPositionCondition(ConditionNode):
         return threshold
 
     @staticmethod
-    def _parse_actor_id(config: dict) -> int:
+    def _parse_actor(config: dict) -> ActorBinding:
+        if "actor" in config:
+            return parse_actor_binding(config, selector_key="actor")
         target = config.get("target", config.get("target_agent"))
         if isinstance(target, str) and target.lower() == "ego":
-            return EGO_ACTOR_ID
+            return ActorBinding(runner_id=EGO_ACTOR_ID)
 
         raw_value = config.get("actor_id", config.get("agent_id"))
         if raw_value is None:
             raw_value = target
         if raw_value is None:
-            return EGO_ACTOR_ID
+            return ActorBinding(runner_id=EGO_ACTOR_ID)
 
         try:
-            return int(raw_value)
+            return ActorBinding(runner_id=int(raw_value))
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                "ReachTargetPositionCondition target must be 'ego' or an integer actor/agent id, "
+                "ReachTargetPositionCondition legacy target must be 'ego' or an integer actor ID, "
                 f"but got: {raw_value}"
             ) from exc
 
@@ -145,26 +153,13 @@ class ReachTargetPositionCondition(ConditionNode):
             return None
         return context.get("position_parser")
 
-    def _find_actor_position(self, objects: Any) -> tuple[float, float, float] | None:
-        if not objects:
+    def _find_actor_position(
+        self, objects: Any, actor_id: int | None
+    ) -> tuple[float, float, float] | None:
+        if not objects or actor_id is None:
             return None
-
-        for index, obj in enumerate(objects):
-            object_actor_id = self._object_actor_id(obj, index)
-            if object_actor_id == self.actor_id:
-                return self._object_position(obj)
-
-        return None
-
-    @staticmethod
-    def _object_actor_id(obj: Any, fallback_index: int) -> int:
-        for field_name in ("actor_id", "agent_id", "id", "object_id"):
-            if hasattr(obj, field_name):
-                try:
-                    return int(getattr(obj, field_name))
-                except TypeError, ValueError:
-                    break
-        return fallback_index
+        actor = find_actor(objects, actor_id)
+        return self._object_position(actor) if actor is not None else None
 
     @staticmethod
     def _object_position(obj: Any) -> tuple[float, float, float] | None:

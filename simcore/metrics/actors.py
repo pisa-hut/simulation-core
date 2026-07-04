@@ -5,8 +5,9 @@ from typing import Any
 
 
 def iter_actor_states(objects: Any) -> Iterator[tuple[int, Any]]:
-    for index, obj in enumerate(objects or []):
-        yield object_actor_id(obj, index), obj
+    values = objects.values() if hasattr(objects, "values") else objects
+    for obj in values or []:
+        yield object_actor_id(obj), obj
 
 
 def find_actor(objects: Any, actor_id: int):
@@ -16,14 +17,14 @@ def find_actor(objects: Any, actor_id: int):
     return None
 
 
-def object_actor_id(obj: Any, fallback_index: int) -> int:
+def object_actor_id(obj: Any) -> int:
     for field_name in ("actor_id", "agent_id", "id", "object_id"):
         if hasattr(obj, field_name):
             try:
                 return int(getattr(obj, field_name))
             except TypeError, ValueError:
                 break
-    return fallback_index
+    raise ValueError("actor state is missing an explicit actor/agent/tracking ID")
 
 
 def object_kinematic(obj: Any) -> Any | None:

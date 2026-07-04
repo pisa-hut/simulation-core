@@ -38,6 +38,24 @@ def test_kinematic_threshold_triggers_for_specific_agent_between_rule() -> None:
     assert "kinematic.z" in result.detail
 
 
+def test_kinematic_threshold_supports_canonical_actors_field() -> None:
+    condition = KinematicThresholdCondition(
+        {
+            "type": "kinematic_threshold",
+            "actors": [1],
+            "metric": "speed",
+            "rule": "gt",
+            "value": 5.0,
+        }
+    )
+
+    condition.put((0, make_runtime_frame(make_object(1, speed=6.0)), None))
+
+    result = condition.evaluate()
+    assert result.code == ConditionCode.TRIGGERED
+    assert "actors=[1]" in result.detail
+
+
 def test_kinematic_threshold_triggers_for_greater_than_rule() -> None:
     condition = KinematicThresholdCondition(
         {
@@ -99,7 +117,7 @@ def test_kinematic_threshold_triggers_for_any_agent() -> None:
 
     assert result.code == ConditionCode.TRIGGERED
     assert "Actor 7" in result.detail
-    assert "agents=any" in result.detail
+    assert "actors=any" in result.detail
 
 
 def test_kinematic_threshold_reports_latest_values_when_not_triggered() -> None:

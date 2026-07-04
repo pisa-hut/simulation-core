@@ -56,6 +56,10 @@ remaining reproducible for the same run/sample.
 Simulator frames contain an explicit ego and an unordered actor map. Stable AV presentation is
 derived from entity name/tracking ID by sim-core; protobuf map iteration order is never used.
 
+All simulator and AV implementations must follow the normative [Runtime Data Contracts](../data-contracts/README.md),
+including coordinate handedness, SI units, timestamps, actor identity, and shape-center transforms.
+Wire compatibility alone is not sufficient for a conforming wrapper.
+
 ## Loop Data Flow
 
 After `sim.reset()` and `av.reset()`, `monitor.update(0, ...)` records the initial runtime frame. Within each later concrete simulation step:

@@ -47,6 +47,8 @@ A runner spec configures runtime settings, output paths, simulator and AV endpoi
 - [AV and Simulator Wrappers](docs/wrappers/): gRPC lifecycle and wrapper config.
 - [Sampler](docs/sampler/): sampler config format, implemented sampler names, examples.
 - [Monitor](docs/monitor/): stop conditions, logging pipelines, result status fields, extension notes.
+- [Runtime Data Contracts](docs/data-contracts/): strict simulator/AV/monitor conventions for
+  coordinates, identity, timestamps, units, and bounding geometry.
 
 ## Repository Layout
 

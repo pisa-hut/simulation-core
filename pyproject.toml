@@ -1,6 +1,6 @@
 [project]
 name = "simcore"
-version = "0.3.1"
+version = "0.4.0"
 description = "PISA simulation core - drives the simulation loop via gRPC"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -14,7 +14,7 @@ build-backend = "setuptools.build_meta"
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [tool.uv.sources]
-pisa-api = { git = "https://github.com/PISA-Hut/pisa-api.git", branch = "feat/obs-contract" }
+pisa-api = { git = "https://github.com/PISA-Hut/pisa-api.git"}
 
 [tool.setuptools.packages.find]
 include = ["simcore*"]

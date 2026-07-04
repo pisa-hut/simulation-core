@@ -74,7 +74,7 @@ wheels = [
 [[package]]
 name = "pisa-api"
 version = "0.4.0"
-source = { git = "https://github.com/PISA-Hut/pisa-api.git?branch=feat%2Fobs-contract#709d811ee605ffe84f5a34de98710bca10dfd611" }
+source = { git = "https://github.com/PISA-Hut/pisa-api.git#b0b4ee82afc0e17917ae1adc66e44db553ceea2d" }
 dependencies = [
     { name = "grpcio" },
     { name = "protobuf" },
@@ -195,7 +195,7 @@ wheels = [
 
 [[package]]
 name = "simcore"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "pisa-api" },
@@ -211,7 +211,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pisa-api", git = "https://github.com/PISA-Hut/pisa-api.git?branch=feat%2Fobs-contract" },
+    { name = "pisa-api", git = "https://github.com/PISA-Hut/pisa-api.git" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rich", specifier = ">=15.0.0" },
 ]

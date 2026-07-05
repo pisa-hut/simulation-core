@@ -144,6 +144,83 @@ def test_existing_manifest_allows_overwrite_policy_change(tmp_path: Path) -> Non
     validate_existing_manifest(existing, expected)
 
 
+def test_existing_manifest_allows_worker_and_retry_policy_change(tmp_path: Path) -> None:
+    expected = {
+        "schema_version": 1,
+        "dt": 0.1,
+        "seed": None,
+        "scenario_name": "case",
+        "resolved_inputs": {"runner_spec": "/new-worker/spec.json"},
+        "execution": {
+            "job_id": "slurm-2002",
+            "permutation": 7,
+            "overwrite": False,
+            "max_concrete_retries": 5,
+        },
+    }
+    existing = {
+        **expected,
+        "resolved_inputs": {"runner_spec": "/old-worker/spec.json"},
+        "execution": {
+            "job_id": "slurm-1001",
+            "permutation": 7,
+            "overwrite": True,
+            "max_concrete_retries": 2,
+        },
+    }
+
+    validate_existing_manifest(existing, expected)
+
+
+def test_existing_manifest_compares_resolved_input_content_not_mount_path(
+    tmp_path: Path,
+) -> None:
+    old_config = tmp_path / "old-mount" / "sim.yaml"
+    new_config = tmp_path / "new-mount" / "sim.yaml"
+    old_config.parent.mkdir()
+    new_config.parent.mkdir()
+    old_config.write_text("seed: 42\n", encoding="utf-8")
+    new_config.write_text("seed: 42\n", encoding="utf-8")
+
+    base_spec = {"runtime": {"dt": 0.1}, "scenario": {"title": "case"}}
+    existing = build_execution_manifest(
+        base_spec,
+        output_base=tmp_path / "output",
+        resolved_inputs={"simulator_config": old_config},
+    )
+    expected = build_execution_manifest(
+        base_spec,
+        output_base=tmp_path / "output",
+        resolved_inputs={"simulator_config": new_config},
+    )
+
+    validate_existing_manifest(existing, expected)
+
+
+def test_existing_manifest_rejects_changed_resolved_input_content(tmp_path: Path) -> None:
+    old_config = tmp_path / "old-mount" / "sim.yaml"
+    new_config = tmp_path / "new-mount" / "sim.yaml"
+    old_config.parent.mkdir()
+    new_config.parent.mkdir()
+    old_config.write_text("seed: 42\n", encoding="utf-8")
+    new_config.write_text("seed: 43\n", encoding="utf-8")
+
+    base_spec = {"runtime": {"dt": 0.1}, "scenario": {"title": "case"}}
+    existing = build_execution_manifest(
+        base_spec,
+        output_base=tmp_path / "output",
+        resolved_inputs={"simulator_config": old_config},
+    )
+    expected = build_execution_manifest(
+        base_spec,
+        output_base=tmp_path / "output",
+        resolved_inputs={"simulator_config": new_config},
+    )
+
+    with pytest.raises(ValueError, match="resolved input content differs for simulator_config"):
+        validate_existing_manifest(existing, expected)
+
+
 def test_existing_incompatible_manifest_is_rejected(tmp_path: Path) -> None:
     expected = {
         "schema_version": 1,

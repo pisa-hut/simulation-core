@@ -511,7 +511,7 @@ class SimulationEngine:
                     runtime_frame,
                     identity_visibility=getattr(self, "_observation_identity", "none"),
                     observation_order=getattr(self, "_observation_order", "stable"),
-                    shuffle_key=f"{self.job_id}:{sample_id or output_related}",
+                    shuffle_key=str(sample_id or output_related),
                 )
             else:  # Lightweight test doubles predating the v2 frame contract.
                 observation = getattr(runtime_frame, "objects", None) or []
@@ -540,7 +540,7 @@ class SimulationEngine:
                         runtime_frame,
                         identity_visibility=getattr(self, "_observation_identity", "none"),
                         observation_order=getattr(self, "_observation_order", "stable"),
-                        shuffle_key=f"{self.job_id}:{sample_id or output_related}",
+                        shuffle_key=str(sample_id or output_related),
                     )
                 else:
                     observation = getattr(runtime_frame, "objects", None) or []

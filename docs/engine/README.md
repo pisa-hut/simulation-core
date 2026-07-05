@@ -55,6 +55,9 @@ A runner spec has these top-level sections:
 - `job_id`: written to `run.job_id` in the monitor summary.
 - `output_dir`: base directory for concrete scenario outputs and logical scenario summary.
 
+`job_id` is worker provenance, not logical-execution identity. A Slurm requeue may use a different
+job ID and different absolute mount paths while resuming the same `output_dir`.
+
 For a concrete scenario:
 
 ```text
@@ -74,6 +77,22 @@ For explicit samples with ids:
 outputs/my_task/iteration_case_001/
 outputs/my_task/iteration_cutin_fast/
 ```
+
+## Execution Manifest And Resume Compatibility
+
+The output root contains `execution_manifest.yaml`. Restart compatibility requires the same
+schema, simulation `dt`, sampler seed, scenario title, sampler permutation, sampler name, and AV
+observation identity/order policy. `runtime.overwrite`, `max_concrete_retries`, and `task.job_id`
+may change between attempts.
+
+Resolved input paths are provenance only. Scenario, simulator/AV/sampler/monitor configuration,
+sampler source, stop conditions, and map inputs are compared by SHA-256 content, so the same input
+mounted at different Slurm temporary paths remains compatible. Changing input content at the same
+or a different path is rejected. The runner spec path itself is not an identity key because it
+normally contains worker-specific paths and job metadata.
+
+For reproducible `av.observation_order=shuffle`, ordering is seeded by the stable sample identity,
+not `task.job_id`; requeueing therefore does not change presentation order.
 
 ## Map And Scenario
 

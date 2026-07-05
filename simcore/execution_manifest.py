@@ -19,9 +19,19 @@ INCOMPATIBLE_FIELDS = (
     "dt",
     "seed",
     "scenario_name",
-    "resolved_inputs",
     "execution",
 )
+PATH_INDEPENDENT_INPUT_KEYS = {
+    "scenario",
+    "simulator_config",
+    "av_config",
+    "sampler_config",
+    "sampler_source",
+    "monitor_config",
+    "stop_conditions",
+    "map_osm",
+    "map_xodr",
+}
 ANALYSIS_POLICY_KEYS = {
     "av_comparison_group",
     "paper_baseline",
@@ -31,6 +41,8 @@ ANALYSIS_POLICY_KEYS = {
 }
 IGNORED_COMPATIBILITY_PATHS = {
     ("execution", "overwrite"),
+    ("execution", "job_id"),
+    ("execution", "max_concrete_retries"),
 }
 
 
@@ -78,6 +90,9 @@ def build_execution_manifest(
             "permutation": runtime_spec.get("permutation"),
             "overwrite": bool(runtime_spec.get("overwrite", False)),
             "max_concrete_retries": int(runtime_spec.get("max_concrete_retries", 3)),
+            "sampler_name": sampler_spec.get("name"),
+            "observation_identity": str(av_spec.get("observation_identity", "none")).lower(),
+            "observation_order": str(av_spec.get("observation_order", "stable")).lower(),
         },
         "software": {
             "python": platform.python_version(),
@@ -114,6 +129,27 @@ def validate_existing_manifest(existing: dict, expected: dict) -> None:
             raise ValueError(
                 "Existing execution_manifest.yaml is incompatible for this output root: "
                 f"{field} differs"
+            )
+    _validate_resolved_input_content(existing, expected)
+
+
+def _validate_resolved_input_content(existing: dict, expected: dict) -> None:
+    """Compare semantic input content without depending on worker mount paths."""
+
+    existing_hashes = existing.get("resolved_input_sha256")
+    expected_hashes = expected.get("resolved_input_sha256")
+    if not isinstance(existing_hashes, dict) or not isinstance(expected_hashes, dict):
+        return
+
+    for key in sorted(PATH_INDEPENDENT_INPUT_KEYS):
+        # Older schema-v1 manifests may predate a newly tracked input. Preserve the
+        # existing forward-compatible behavior by checking only keys they recorded.
+        if key not in existing_hashes:
+            continue
+        if existing_hashes[key] != expected_hashes.get(key):
+            raise ValueError(
+                "Existing execution_manifest.yaml is incompatible for this output root: "
+                f"resolved input content differs for {key}"
             )
 
 

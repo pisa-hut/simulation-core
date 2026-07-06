@@ -911,9 +911,7 @@ def _path_or_none(path: str | Path | None) -> Path | None:
 def _ego_goal_manifest(
     scenario_spec: dict[str, Any], scenario_pack: ScenarioPack
 ) -> dict[str, Any] | None:
-    position = getattr(
-        getattr(getattr(scenario_pack, "ego", None), "goal", None), "position", None
-    )
+    position = getattr(getattr(getattr(scenario_pack, "ego", None), "goal", None), "position", None)
     if position is None:
         return None
     raw_position = (scenario_spec.get("goal_config", {}) or {}).get("position", {}) or {}

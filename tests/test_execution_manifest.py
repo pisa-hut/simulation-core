@@ -34,6 +34,11 @@ def test_execution_manifest_contains_execution_provenance(tmp_path: Path) -> Non
         },
     }
 
+    ego_goal = {
+        "source_type": "LanePosition",
+        "lane": {"road_id": 25, "lane_id": 1, "s_m": 62.0, "offset_m": 0.0},
+        "world": {"x_m": 10.0, "y_m": 20.0, "z_m": 0.0},
+    }
     manifest = build_execution_manifest(
         spec,
         output_base=tmp_path / "outputs",
@@ -47,6 +52,7 @@ def test_execution_manifest_contains_execution_provenance(tmp_path: Path) -> Non
             "stop_conditions": None,
         },
         runner_spec_path=runner_spec,
+        ego_goal=ego_goal,
     )
 
     assert manifest["schema_version"] == 1
@@ -68,6 +74,7 @@ def test_execution_manifest_contains_execution_provenance(tmp_path: Path) -> Non
     assert manifest["av_seed"] is None
     assert manifest["execution_seed"] is None
     assert manifest["actors"][0]["role"] == "ego"
+    assert manifest["ego_goal"] == ego_goal
 
 
 def test_existing_compatible_manifest_supports_restart(tmp_path: Path) -> None:
@@ -218,6 +225,37 @@ def test_existing_manifest_rejects_changed_resolved_input_content(tmp_path: Path
     )
 
     with pytest.raises(ValueError, match="resolved input content differs for simulator_config"):
+        validate_existing_manifest(existing, expected)
+
+
+def test_existing_manifest_rejects_changed_ego_goal() -> None:
+    common = {
+        "schema_version": 1,
+        "dt": 0.1,
+        "seed": None,
+        "scenario_name": "case",
+        "resolved_inputs": {},
+        "resolved_input_sha256": {},
+        "execution": {},
+    }
+    existing = {
+        **common,
+        "ego_goal": {
+            "source_type": "WorldPosition",
+            "lane": {},
+            "world": {"x_m": 10.0, "y_m": 20.0},
+        },
+    }
+    expected = {
+        **common,
+        "ego_goal": {
+            "source_type": "WorldPosition",
+            "lane": {},
+            "world": {"x_m": 11.0, "y_m": 20.0},
+        },
+    }
+
+    with pytest.raises(ValueError, match="ego_goal differs"):
         validate_existing_manifest(existing, expected)
 
 

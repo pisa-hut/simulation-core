@@ -153,13 +153,6 @@ class SimulationEngine:
             default_filename="stop_conditions.yaml",
         )
         self._execution_manifest_path = self.output_base / "execution_manifest.yaml"
-        self._initialize_execution_manifest(
-            sampler_spec=sampler_spec,
-            scenario_spec=scenario_spec,
-            sim_spec=sim_spec,
-            av_spec=av_spec,
-            monitor_spec=monitor_spec,
-        )
         self._startup_error: ScenarioExecutionError | None = None
         self.av: AVWrapper | None = None
         self.sim: SimWrapper | None = None
@@ -175,8 +168,15 @@ class SimulationEngine:
                 map_spec,
                 position_parser=self.position_parser,
             )
+            self._initialize_execution_manifest(
+                sampler_spec=sampler_spec,
+                scenario_spec=scenario_spec,
+                sim_spec=sim_spec,
+                av_spec=av_spec,
+                monitor_spec=monitor_spec,
+            )
         except Exception as exc:
-            logger.exception("Failed to create ScenarioPack from scenario and map specifications.")
+            logger.exception("Failed to prepare scenario inputs or execution manifest.")
             self.position_parser.close()
             raise exc
 
@@ -836,10 +836,14 @@ class SimulationEngine:
             output_base=self.output_base,
             resolved_inputs=resolved_inputs,
             runner_spec_path=self.runner_spec_path,
+            ego_goal=_ego_goal_manifest(scenario_spec, self.sps),
         )
         if self._execution_manifest_path.exists():
             existing = load_execution_manifest(self._execution_manifest_path)
             validate_existing_manifest(existing, expected)
+            if existing.get("ego_goal") is None and expected.get("ego_goal") is not None:
+                existing["ego_goal"] = expected["ego_goal"]
+                write_execution_manifest(self._execution_manifest_path, existing)
             return
         write_execution_manifest(self._execution_manifest_path, expected)
 
@@ -902,3 +906,35 @@ def _path_or_none(path: str | Path | None) -> Path | None:
     if path is None or str(path) == "":
         return None
     return Path(path).expanduser()
+
+
+def _ego_goal_manifest(
+    scenario_spec: dict[str, Any], scenario_pack: ScenarioPack
+) -> dict[str, Any] | None:
+    position = getattr(
+        getattr(getattr(scenario_pack, "ego", None), "goal", None), "position", None
+    )
+    if position is None:
+        return None
+    raw_position = (scenario_spec.get("goal_config", {}) or {}).get("position", {}) or {}
+    raw_type = str(raw_position.get("type", "WorldPosition"))
+    source_type = "LanePosition" if raw_type.lower() == "laneposition" else "WorldPosition"
+    return {
+        "source_type": source_type,
+        "lane": {
+            "road_id": int(position.lane.road_id),
+            "junction_id": int(position.lane.junction_id),
+            "lane_id": int(position.lane.lane_id),
+            "s_m": float(position.lane.s),
+            "offset_m": float(position.lane.offset),
+        },
+        "world": {
+            "x_m": float(position.world.x),
+            "y_m": float(position.world.y),
+            "z_m": float(position.world.z),
+            "heading_rad": float(position.world.h),
+            "pitch_rad": float(position.world.p),
+            "roll_rad": float(position.world.r),
+            "heading_relative_rad": float(position.world.h_relative),
+        },
+    }

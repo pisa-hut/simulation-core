@@ -52,6 +52,7 @@ def build_execution_manifest(
     output_base: Path,
     resolved_inputs: dict[str, Path | None],
     runner_spec_path: Path | None = None,
+    ego_goal: dict[str, Any] | None = None,
 ) -> dict:
     runtime_spec = spec.get("runtime", {}) or {}
     task_spec = spec.get("task", {}) or {}
@@ -79,6 +80,7 @@ def build_execution_manifest(
         "av_seed": _seed_from(av_spec, "seed", "random_seed"),
         "execution_seed": _seed_from(runtime_spec, "seed", "execution_seed", "random_seed"),
         "scenario_name": scenario_spec.get("title"),
+        "ego_goal": ego_goal,
         "runner_version": runner_version,
         "pisa_api_version": pisa_api_version,
         "runner_git_sha": runner_git_sha,
@@ -130,6 +132,13 @@ def validate_existing_manifest(existing: dict, expected: dict) -> None:
                 "Existing execution_manifest.yaml is incompatible for this output root: "
                 f"{field} differs"
             )
+    if "ego_goal" in existing and not _compatible_value(
+        existing.get("ego_goal"), expected.get("ego_goal"), path=("ego_goal",)
+    ):
+        raise ValueError(
+            "Existing execution_manifest.yaml is incompatible for this output root: "
+            "ego_goal differs"
+        )
     _validate_resolved_input_content(existing, expected)
 
 

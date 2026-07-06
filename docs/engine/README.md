@@ -94,6 +94,31 @@ normally contains worker-specific paths and job metadata.
 For reproducible `av.observation_order=shuffle`, ordering is seeded by the stable sample identity,
 not `task.job_id`; requeueing therefore does not change presentation order.
 
+The manifest also stores the resolved ego destination in both coordinate representations:
+
+```yaml
+ego_goal:
+  source_type: LanePosition
+  lane:
+    road_id: 25
+    junction_id: -1
+    lane_id: 1
+    s_m: 62.0
+    offset_m: 3.604884
+  world:
+    x_m: 123.45
+    y_m: 67.89
+    z_m: 0.0
+    heading_rad: 1.57
+    pitch_rad: 0.0
+    roll_rad: 0.0
+    heading_relative_rad: 0.0
+```
+
+`source_type` records whether the runner spec supplied `LanePosition` or `WorldPosition`; both
+resolved forms are always written. Analysis should use `ego_goal.world` unless lane-relative
+reasoning is explicitly required. The resolved goal is part of restart compatibility.
+
 ## Map And Scenario
 
 ```json

@@ -19,6 +19,7 @@ from simcore.execution_manifest import (
     build_execution_manifest,
     finalize_execution_manifest,
     load_execution_manifest,
+    record_component_identity,
     validate_existing_manifest,
     write_execution_manifest,
 )
@@ -185,6 +186,9 @@ class SimulationEngine:
                 sim_spec=sim_spec,
                 dt_ns=int(self._dt_s * 1e9),
             )
+            record_component_identity(
+                self._execution_manifest_path, "simulator", self.sim.identity
+            )
         except ScenarioExecutionError as exc:
             logger.error("Simulator initialization failed: %s", exc)
             self._startup_error = exc
@@ -200,6 +204,7 @@ class SimulationEngine:
                 dt_ns=int(self._dt_s * 1e9),
                 map_name=map_spec.get("name", "unknown_map"),
             )
+            record_component_identity(self._execution_manifest_path, "av", self.av.identity)
         except ScenarioExecutionError as exc:
             logger.error("AV initialization failed: %s", exc)
             self._startup_error = exc

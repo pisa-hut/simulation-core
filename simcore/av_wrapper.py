@@ -3,6 +3,7 @@ import logging
 import time
 
 import grpc
+from google.protobuf.json_format import MessageToDict
 from google.protobuf.struct_pb2 import Struct
 from pisa_api import (
     av_server_pb2,
@@ -57,6 +58,7 @@ class AVWrapper:
             except Exception:
                 logger.warning("AV ping failed, retrying...")
                 time.sleep(2)
+        self._wrapper_identity = self._identity_from_pong(pong)
         logger.info("AV service is alive")
         self._connected = True
 
@@ -77,10 +79,41 @@ class AVWrapper:
             dt=self._dt_s,
         )
         try:
-            self._stub.Init(request, timeout=self._timeout)
+            response = self._stub.Init(request, timeout=self._timeout)
         except grpc.RpcError as e:
             raise classify_grpc_error(e) from e
-        logger.info("AV init completed")
+        self._component_identity = self._identity_from_init_response(response)
+        logger.info("AV init completed: %s", self._component_identity["name"])
+
+    @property
+    def identity(self) -> dict:
+        return {
+            "wrapper": dict(self._wrapper_identity),
+            "component": {
+                "name": self._component_identity["name"],
+                "metadata": dict(self._component_identity["metadata"]),
+            },
+        }
+
+    @staticmethod
+    def _identity_from_pong(pong) -> dict[str, str]:
+        name = getattr(pong, "name", "")
+        version = getattr(pong, "version", "")
+        if not isinstance(name, str) or not isinstance(version, str):
+            raise RuntimeError("AV Ping returned an incomplete wrapper identity")
+        if not name.strip() or not version.strip():
+            raise RuntimeError("AV Ping returned an incomplete wrapper identity")
+        return {"name": name, "version": version}
+
+    @staticmethod
+    def _identity_from_init_response(response) -> dict:
+        name = getattr(response, "name", "")
+        if not isinstance(name, str) or not name.strip():
+            raise RuntimeError("AV Init returned an empty component name")
+        return {
+            "name": name,
+            "metadata": MessageToDict(response.metadata),
+        }
 
     def reset(
         self,

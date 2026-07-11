@@ -94,6 +94,34 @@ normally contains worker-specific paths and job metadata.
 For reproducible `av.observation_order=shuffle`, ordering is seeded by the stable sample identity,
 not `task.job_id`; requeueing therefore does not change presentation order.
 
+After each service initializes, the runner records the identity reported by the wrapper's `Ping`
+and `Init` responses:
+
+```yaml
+components:
+  simulator:
+    wrapper:
+      name: esmini-wrapper
+      version: 0.3.1
+    component:
+      name: esmini
+      metadata:
+        library_path: /opt/esmini/bin/libesminiLib.so
+  av:
+    wrapper:
+      name: simple-av-wrapper
+      version: 0.3.0
+    component:
+      name: deterministic-rule-based
+      metadata:
+        control_mode: ackermann
+```
+
+`wrapper` identifies the serving package and `component` identifies what that wrapper actually
+initialized. Component metadata is wrapper-owned, must be safe to persist, and may vary between
+implementations. These runtime-reported fields are provenance and are not currently resume
+compatibility keys.
+
 The manifest also stores the resolved ego destination in both coordinate representations:
 
 ```yaml

@@ -9,6 +9,8 @@ from simcore.execution import ExecResult, RetryHint
 from simcore.execution_manifest import (
     build_execution_manifest,
     finalize_execution_manifest,
+    load_execution_manifest,
+    record_component_identity,
     validate_existing_manifest,
     write_execution_manifest,
 )
@@ -75,6 +77,29 @@ def test_execution_manifest_contains_execution_provenance(tmp_path: Path) -> Non
     assert manifest["execution_seed"] is None
     assert manifest["actors"][0]["role"] == "ego"
     assert manifest["ego_goal"] == ego_goal
+    assert manifest["components"] == {"simulator": None, "av": None}
+
+
+def test_record_component_identity_preserves_manifest(tmp_path: Path) -> None:
+    path = tmp_path / "execution_manifest.yaml"
+    write_execution_manifest(
+        path,
+        {"schema_version": 1, "execution_id": "run-1", "components": {"av": None}},
+    )
+    identity = {
+        "wrapper": {"name": "esmini-wrapper", "version": "0.3.1"},
+        "component": {
+            "name": "esmini",
+            "metadata": {"library_path": "/opt/esmini/bin/libesminiLib.so"},
+        },
+    }
+
+    record_component_identity(path, "simulator", identity)
+
+    manifest = load_execution_manifest(path)
+    assert manifest["execution_id"] == "run-1"
+    assert manifest["components"]["av"] is None
+    assert manifest["components"]["simulator"] == identity
 
 
 def test_existing_compatible_manifest_supports_restart(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 import grpc
+from google.protobuf.json_format import MessageToDict
 from google.protobuf.struct_pb2 import Struct
 from pisa_api import (
     config_pb2,
@@ -60,6 +61,7 @@ class SimWrapper:
             except Exception:
                 logger.warning("Simulator ping failed, retrying...")
                 time.sleep(2)
+        self._wrapper_identity = self._identity_from_pong(pong)
         logger.info("Simulator service is alive")
         self._connected = True
 
@@ -85,10 +87,41 @@ class SimWrapper:
             ),
         )
         try:
-            self._stub.Init(request, timeout=self._timeout)
+            response = self._stub.Init(request, timeout=self._timeout)
         except grpc.RpcError as e:
             raise classify_grpc_error(e) from e
-        logger.info("Simulator init completed")
+        self._component_identity = self._identity_from_init_response(response)
+        logger.info("Simulator init completed: %s", self._component_identity["name"])
+
+    @property
+    def identity(self) -> dict[str, Any]:
+        return {
+            "wrapper": dict(self._wrapper_identity),
+            "component": {
+                "name": self._component_identity["name"],
+                "metadata": dict(self._component_identity["metadata"]),
+            },
+        }
+
+    @staticmethod
+    def _identity_from_pong(pong) -> dict[str, str]:
+        name = getattr(pong, "name", "")
+        version = getattr(pong, "version", "")
+        if not isinstance(name, str) or not isinstance(version, str):
+            raise RuntimeError("Simulator Ping returned an incomplete wrapper identity")
+        if not name.strip() or not version.strip():
+            raise RuntimeError("Simulator Ping returned an incomplete wrapper identity")
+        return {"name": name, "version": version}
+
+    @staticmethod
+    def _identity_from_init_response(response) -> dict[str, Any]:
+        name = getattr(response, "name", "")
+        if not isinstance(name, str) or not name.strip():
+            raise RuntimeError("Simulator Init returned an empty component name")
+        return {
+            "name": name,
+            "metadata": MessageToDict(response.metadata),
+        }
 
     def reset(
         self,

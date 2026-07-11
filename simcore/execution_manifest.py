@@ -108,6 +108,10 @@ def build_execution_manifest(
             "simulator_image": simulator_spec.get("image"),
             "av_image": av_spec.get("image"),
         },
+        "components": {
+            "simulator": None,
+            "av": None,
+        },
         "summary": {
             "finished": 0,
             "failed": 0,
@@ -170,6 +174,16 @@ def write_execution_manifest(path: Path, manifest: dict) -> None:
         encoding="utf-8",
     )
     temporary.replace(path)
+
+
+def record_component_identity(path: Path, kind: str, identity: dict) -> None:
+    """Atomically add runtime-reported wrapper/component provenance."""
+    if kind not in {"simulator", "av"}:
+        raise ValueError(f"Unsupported component kind: {kind}")
+    manifest = load_execution_manifest(path)
+    components = manifest.setdefault("components", {})
+    components[kind] = identity
+    write_execution_manifest(path, manifest)
 
 
 def finalize_execution_manifest(

@@ -168,8 +168,13 @@ def test_engine_resolves_stop_condition_config_relative_to_scenario_folder(
         "from_dict",
         staticmethod(lambda scenario_spec, map_spec, position_parser=None: object()),
     )
-    monkeypatch.setattr(engine_module, "SimWrapper", lambda *args, **kwargs: object())
-    monkeypatch.setattr(engine_module, "AVWrapper", lambda *args, **kwargs: object())
+    identity = {"wrapper": {}, "component": {}}
+    monkeypatch.setattr(
+        engine_module, "SimWrapper", lambda *args, **kwargs: SimpleNamespace(identity=identity)
+    )
+    monkeypatch.setattr(
+        engine_module, "AVWrapper", lambda *args, **kwargs: SimpleNamespace(identity=identity)
+    )
     monkeypatch.setattr(engine_module, "Monitor", CapturingMonitor)
 
     engine_module.SimulationEngine(
@@ -220,8 +225,13 @@ def test_engine_uses_default_stop_conditions_file_from_scenario_folder(
         "from_dict",
         staticmethod(lambda scenario_spec, map_spec, position_parser=None: object()),
     )
-    monkeypatch.setattr(engine_module, "SimWrapper", lambda *args, **kwargs: object())
-    monkeypatch.setattr(engine_module, "AVWrapper", lambda *args, **kwargs: object())
+    identity = {"wrapper": {}, "component": {}}
+    monkeypatch.setattr(
+        engine_module, "SimWrapper", lambda *args, **kwargs: SimpleNamespace(identity=identity)
+    )
+    monkeypatch.setattr(
+        engine_module, "AVWrapper", lambda *args, **kwargs: SimpleNamespace(identity=identity)
+    )
     monkeypatch.setattr(engine_module, "Monitor", CapturingMonitor)
 
     engine_module.SimulationEngine(

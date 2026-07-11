@@ -186,9 +186,7 @@ class SimulationEngine:
                 sim_spec=sim_spec,
                 dt_ns=int(self._dt_s * 1e9),
             )
-            record_component_identity(
-                self._execution_manifest_path, "simulator", self.sim.identity
-            )
+            record_component_identity(self._execution_manifest_path, "simulator", self.sim.identity)
         except ScenarioExecutionError as exc:
             logger.error("Simulator initialization failed: %s", exc)
             self._startup_error = exc

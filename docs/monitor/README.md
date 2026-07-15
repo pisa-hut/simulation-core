@@ -122,9 +122,17 @@ outputs/my_task/concrete/monitor/
 For sampled runs:
 
 ```text
+outputs/my_task/concrete_result.jsonl
 outputs/my_task/iteration_1/monitor/
 outputs/my_task/iteration_2/monitor/
 ```
+
+`concrete_result.jsonl` is an append-only index of terminal concrete results
+(`finished`, `skipped`, and `abort`). The per-iteration `result.csv` files remain
+the source of truth and retain retry history. On resume, the runner loads the JSONL
+index once; when an iteration is missing, it falls back to that iteration's
+`result.csv` and backfills the index. Existing terminal results replayed during a
+resume are not appended again.
 
 All logged simulation times use milliseconds:
 

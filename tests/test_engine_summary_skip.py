@@ -726,6 +726,30 @@ def test_run_logical_updates_sampler_with_concrete_outcome_metrics(tmp_path: Pat
     assert result.metrics == {"ego_ttc.min_ttc_s": 0.4}
 
 
+def test_sample_result_uses_terminal_ledger_metrics_before_legacy_csv(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, finished=False)
+    sample = Sample(params={"speed": 10})
+    engine.monitor.concrete_outcomes = lambda: []
+    engine.monitor.terminal_summary_row = lambda output_related, parameter_hash: {
+        "run.status": "finished",
+        "run.test_outcome": "fail",
+        "run.stop_condition": "ttc_guard",
+        "run.stop_reason": "low TTC",
+        "ego_ttc.min_ttc_s": 0.4,
+    }
+    engine.monitor.summary_rows = lambda output_related: pytest.fail(
+        "legacy result.csv should not be read"
+    )
+
+    result = engine._sample_result("iteration_1", sample, previous_outcome_count=0)
+
+    assert result.status == "finished"
+    assert result.test_outcome == "fail"
+    assert result.stop_condition == "ttc_guard"
+    assert result.metrics == {"ego_ttc.min_ttc_s": 0.4}
+    assert result.metadata["resumed"] is True
+
+
 def test_run_logical_emits_total_none_for_open_ended_sampler(tmp_path: Path) -> None:
     engine = make_engine(tmp_path, finished=False)
     sampler = FakeSampler([{"speed": 10}])

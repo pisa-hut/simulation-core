@@ -9,6 +9,11 @@ from typing import Any
 import yaml
 
 from simcore.av_wrapper import AVWrapper
+from simcore.concrete_result_store import (
+    ConcreteResultStore,
+    concrete_result_entry,
+    entry_as_summary_row,
+)
 from simcore.conditions import ConditionCode, ConditionNode, build_condition_tree
 from simcore.execution import ConcreteOutcome, ExecResult
 from simcore.monitoring.frame_recorder_registry import build_frame_recorders
@@ -90,6 +95,8 @@ class Monitor:
         self.current_output_related = ""
         self._concrete_outcomes: list[ConcreteOutcome] = []
         self.actor_registry = EpisodeActorRegistry()
+        self.concrete_result_store: ConcreteResultStore | None = None
+        self._concrete_result_store_cleared_for_overwrite = False
 
         if config_path:
             self.logging_cfg = self._load_mapping_config(config_path, "monitor logging")
@@ -104,6 +111,8 @@ class Monitor:
                     "use scenario.stop_condition_config_path"
                 )
             self._configure_logging()
+            if self.summary_logging_enabled:
+                self.concrete_result_store = ConcreteResultStore(Path(self.log_file).parent)
 
         if stop_condition_config_path:
             self.stop_condition_cfg = self._load_stop_condition_config(stop_condition_config_path)
@@ -302,6 +311,13 @@ class Monitor:
         attempt: int | None = None,
         parameter_hash: str | None = None,
     ):
+        if (
+            overwrite_summary
+            and self.concrete_result_store is not None
+            and not self._concrete_result_store_cleared_for_overwrite
+        ):
+            self.concrete_result_store.clear()
+            self._concrete_result_store_cleared_for_overwrite = True
         self._close_log_manager()
         self.step_index = 0
         self.final_sim_time_ns = 0
@@ -376,6 +392,7 @@ class Monitor:
         if not self.log_manager:
             return
 
+        wrote_summary = False
         try:
             for recorder in self.table_recorders:
                 scenario_end_events = getattr(recorder, "scenario_end_events", None)
@@ -391,8 +408,18 @@ class Monitor:
 
             if summary_row is not None:
                 self.log_manager.write(SUMMARY_STREAM, summary_row)
+                wrote_summary = True
         finally:
             self._close_log_manager()
+
+        if wrote_summary and effective_status in {"finished", "skipped", "abort"}:
+            self._append_terminal_result(
+                status=effective_status,
+                test_outcome=effective_test_outcome,
+                stop_condition=effective_stop_condition,
+                reason=reason or self.stop_reason,
+                summary_row=summary_row or {},
+            )
 
     def close(self, result: ExecResult | None = None) -> None:
         self._close_log_manager()
@@ -410,14 +437,22 @@ class Monitor:
     def concrete_outcomes(self) -> list[ConcreteOutcome]:
         return list(self._concrete_outcomes)
 
-    def has_finished_summary(self, output_related: str) -> bool:
-        rows = self.summary_rows(output_related)
-        if not rows:
-            return False
+    def has_finished_summary(
+        self,
+        output_related: str,
+        parameter_hash: str | None = None,
+    ) -> bool:
+        return self.last_summary_status(output_related, parameter_hash) == "finished"
 
-        return rows[-1].get("run.status") == "finished"
+    def last_summary_status(
+        self,
+        output_related: str,
+        parameter_hash: str | None = None,
+    ) -> str | None:
+        terminal_row = self.terminal_summary_row(output_related, parameter_hash)
+        if terminal_row is not None:
+            return self._normalize_execution_status(terminal_row.get("run.status"))
 
-    def last_summary_status(self, output_related: str) -> str | None:
         rows = self.summary_rows(output_related)
         if not rows:
             return None
@@ -426,6 +461,36 @@ class Monitor:
 
     def has_terminal_summary(self, output_related: str) -> bool:
         return self.last_summary_status(output_related) in {"finished", "skipped", "abort"}
+
+    def terminal_summary_row(
+        self,
+        output_related: str,
+        parameter_hash: str | None = None,
+    ) -> dict[str, Any] | None:
+        if self.concrete_result_store is not None:
+            entry = self.concrete_result_store.latest(output_related)
+            if entry is not None:
+                self._require_matching_parameter_hash(
+                    output_related,
+                    entry.get("parameter_hash"),
+                    parameter_hash,
+                )
+                return entry_as_summary_row(entry)
+
+        rows = self.summary_rows(output_related)
+        if not rows:
+            return None
+        row = rows[-1]
+        status = self._normalize_execution_status(row.get("run.status"))
+        if status not in {"finished", "skipped", "abort"}:
+            return None
+        self._require_matching_parameter_hash(
+            output_related,
+            row.get("run.parameter_hash"),
+            parameter_hash,
+        )
+        self._backfill_terminal_result(output_related, row, status)
+        return row
 
     def count_retryable_failures(self, output_related: str) -> int:
         return sum(
@@ -452,6 +517,90 @@ class Monitor:
             / self.logging_output_dir
             / self.summary_output
         )
+
+    def _append_terminal_result(
+        self,
+        *,
+        status: str,
+        test_outcome: str,
+        stop_condition: str,
+        reason: str,
+        summary_row: dict[str, Any],
+    ) -> None:
+        if self.concrete_result_store is None:
+            return
+        entry = concrete_result_entry(
+            concrete_key=self.current_output_related,
+            sample_id=self.sample_id,
+            attempt=self.attempt,
+            parameter_hash=self.parameter_hash,
+            params=self.params,
+            status=status,
+            test_outcome=test_outcome,
+            stop_condition=stop_condition,
+            reason=reason,
+            metrics={
+                key: value for key, value in summary_row.items() if not key.startswith("run.")
+            },
+        )
+        try:
+            self.concrete_result_store.append(entry)
+        except Exception:
+            logger.exception(
+                "Failed to append terminal concrete result for %s; legacy result remains available",
+                self.current_output_related,
+            )
+
+    def _backfill_terminal_result(
+        self,
+        output_related: str,
+        row: dict[str, Any],
+        status: str,
+    ) -> None:
+        if self.concrete_result_store is None:
+            return
+        raw_params = row.get("run.params", "")
+        try:
+            params = json.loads(raw_params) if raw_params else {}
+        except TypeError, ValueError, json.JSONDecodeError:
+            logger.warning("Could not parse legacy parameters for %s", output_related)
+            params = {}
+        try:
+            attempt = int(row.get("run.attempt") or 1)
+        except TypeError, ValueError:
+            attempt = 1
+        entry = concrete_result_entry(
+            concrete_key=output_related,
+            sample_id=str(row.get("run.sample_id") or output_related),
+            attempt=attempt,
+            parameter_hash=str(row.get("run.parameter_hash") or ""),
+            params=params if isinstance(params, dict) else {},
+            status=status,
+            test_outcome=self._normalize_test_outcome(row.get("run.test_outcome", "unknown")),
+            stop_condition=str(row.get("run.stop_condition") or ""),
+            reason=str(row.get("run.stop_reason") or ""),
+            metrics={key: value for key, value in row.items() if not key.startswith("run.")},
+        )
+        try:
+            self.concrete_result_store.append(entry)
+        except Exception:
+            logger.exception(
+                "Failed to backfill terminal concrete result for %s; legacy result remains available",
+                output_related,
+            )
+
+    @staticmethod
+    def _require_matching_parameter_hash(
+        output_related: str,
+        stored_hash: Any,
+        expected_hash: str | None,
+    ) -> None:
+        normalized_stored = str(stored_hash or "")
+        if expected_hash and normalized_stored and normalized_stored != expected_hash:
+            raise ValueError(
+                f"Stored result for {output_related} has parameter_hash={normalized_stored}, "
+                f"but the regenerated sample has parameter_hash={expected_hash}"
+            )
 
     def next_summary_attempt(self, output_related: str) -> int:
         if self.overwrite_summary:
@@ -677,12 +826,22 @@ class Monitor:
             counts[outcome] += 1
         return counts
 
-    def _latest_concrete_summary_rows(self) -> list[dict[str, str]]:
-        rows_by_path = []
+    def _latest_concrete_summary_rows(self) -> list[dict[str, Any]]:
+        rows_by_key: dict[str, dict[str, Any]] = {}
+        if self.concrete_result_store is not None:
+            rows_by_key.update(
+                {
+                    concrete_key: entry_as_summary_row(entry)
+                    for concrete_key, entry in self.concrete_result_store.all_latest().items()
+                }
+            )
         output_base = Path(self.log_file).parent
 
         for summary_path in output_base.glob(f"*/{self.logging_output_dir}/*.csv"):
             if summary_path.name != self.summary_output:
+                continue
+            concrete_key = summary_path.parent.parent.name
+            if concrete_key in rows_by_key:
                 continue
             try:
                 with summary_path.open(newline="") as file:
@@ -692,8 +851,12 @@ class Monitor:
                 continue
             if not rows:
                 continue
-            rows_by_path.append(rows[-1])
-        return rows_by_path
+            row = rows[-1]
+            rows_by_key[concrete_key] = row
+            status = self._normalize_execution_status(row.get("run.status"))
+            if status in {"finished", "skipped", "abort"}:
+                self._backfill_terminal_result(concrete_key, row, status)
+        return list(rows_by_key.values())
 
     def _stop_condition_config(self) -> dict | None:
         if self.stop_condition_cfg is None:

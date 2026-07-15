@@ -218,7 +218,10 @@ Use `error` for runner/system failures. Use `fail` for a completed test where eg
 
 ## Retry And Skip Behavior
 
-Completion and failure history are tracked by `monitor/summary.csv` for each concrete run.
+Completion and failure history are tracked by `monitor/result.csv` for each concrete run.
+The output root also contains `concrete_result.jsonl`, a terminal-result index used
+to avoid reopening every per-iteration CSV while replaying adaptive sampler feedback.
+Legacy outputs without the index remain supported and are backfilled as they are read.
 
 If the last `run.status` is `finished`, `concrete_wrapper()` skips the run when `runtime.overwrite` is `false`. If the last status is `error`, the runner retries until `max_concrete_retries` is reached. Legacy rows with `run.status=fail` are treated as `error` for retry and aggregation.
 

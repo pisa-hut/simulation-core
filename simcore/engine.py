@@ -409,7 +409,16 @@ class SimulationEngine:
         sim_params: dict[str, Any] | None = None,
         sample_id: str | None = None,
     ) -> None:
-        last_status = self.monitor.last_summary_status(output_related)
+        parameter_hash = _parameter_hash(params)
+        try:
+            last_status = self.monitor.last_summary_status(
+                output_related,
+                parameter_hash=parameter_hash,
+            )
+        except TypeError as exc:
+            if "unexpected keyword" not in str(exc):
+                raise
+            last_status = self.monitor.last_summary_status(output_related)
         if last_status in {"skipped", "abort"}:
             logger.info(
                 f"Concrete {output_related} already has terminal status '{last_status}'. Skipping execution."
@@ -765,30 +774,43 @@ class SimulationEngine:
                 metadata={"concrete_key": outcome.concrete_key},
             )
 
+        terminal_summary_row = getattr(self.monitor, "terminal_summary_row", None)
+        if callable(terminal_summary_row):
+            row = terminal_summary_row(output_related, _parameter_hash(sample.params))
+            if row:
+                return self._sample_result_from_summary_row(output_related, sample, row)
+
         summary_rows = getattr(self.monitor, "summary_rows", None)
         if callable(summary_rows):
             rows = summary_rows(output_related)
             if rows:
-                row = rows[-1]
-                return SampleResult(
-                    params=dict(sample.params),
-                    status=row.get("run.status"),
-                    test_outcome=row.get("run.test_outcome"),
-                    stop_condition=row.get("run.stop_condition"),
-                    reason=row.get("run.stop_reason", ""),
-                    metrics={
-                        key: self._parse_summary_value(value)
-                        for key, value in row.items()
-                        if not key.startswith("run.")
-                    },
-                    metadata={"concrete_key": output_related, "resumed": True},
-                )
+                return self._sample_result_from_summary_row(output_related, sample, rows[-1])
 
         return SampleResult(
             params=dict(sample.params),
             status="error",
             reason="Scenario result missing",
             metadata={"concrete_key": output_related},
+        )
+
+    def _sample_result_from_summary_row(
+        self,
+        output_related: str,
+        sample: Sample,
+        row: dict[str, Any],
+    ) -> SampleResult:
+        return SampleResult(
+            params=dict(sample.params),
+            status=row.get("run.status"),
+            test_outcome=row.get("run.test_outcome"),
+            stop_condition=row.get("run.stop_condition"),
+            reason=row.get("run.stop_reason", ""),
+            metrics={
+                key: self._parse_summary_value(value)
+                for key, value in row.items()
+                if not key.startswith("run.")
+            },
+            metadata={"concrete_key": output_related, "resumed": True},
         )
 
     @staticmethod

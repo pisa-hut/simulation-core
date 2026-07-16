@@ -63,6 +63,8 @@ sampler-specific settings.
 - `total_samples`: total adaptive budget.
 - `initial_samples`: initial exploration count; defaults to `min(8, total_samples)`.
 - `initial_sampler`: `sobol`, `lhs`, or `random`.
+- `boundary_pairs`: semantic label pairs to refine; defaults to `[[safe, unsafe]]` and
+  accepts `safe`, `unsafe`, and `invalid` labels.
 - `min_ttc_threshold`: optional unsafe TTC threshold.
 - `unsafe_conditions`: optional metric/operator/value rules.
 - `opposite_neighbors`: nearest opposite-label neighbors retained per sample.

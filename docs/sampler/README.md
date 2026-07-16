@@ -307,6 +307,8 @@ source:
 total_samples: 64
 initial_samples: 12
 initial_sampler: sobol
+boundary_pairs:
+  - [safe, unsafe]
 min_ttc_threshold: 1.5
 boundary_candidate_count: 32
 opposite_neighbors: 3
@@ -324,10 +326,27 @@ unsafe_conditions:
     value: 1.0
 ```
 
-The first samples come from `sobol`, `lhs`, or `random`. Once both SAFE and UNSAFE
-results exist, each sample selects its nearest opposite-label neighbors in normalized
-parameter space. The sampler generates a small number of midpoint candidates per local
-pair, then scores the complete pool using:
+The first samples come from `sobol`, `lhs`, or `random`. By default, refinement starts
+once both SAFE and UNSAFE results exist. Other semantic boundaries can be selected
+explicitly:
+
+```yaml
+boundary_pairs:
+  - [safe, unsafe]
+  - [safe, invalid]
+  - [unsafe, invalid]
+```
+
+Labels are case-insensitive and pairs are unordered. SAFE, UNSAFE, and INVALID are
+supported; ERROR is excluded because transient execution failures should not guide
+sampling. Each pair must contain two different labels, reversed/duplicate pairs are
+rejected, and `boundary_candidate_count` must be at least the number of configured pairs.
+
+Once at least one configured pair has observations on both sides, each active pair selects
+its nearest cross-label neighbors in normalized parameter space. Candidate streams are
+merged round-robin so one boundary type cannot fill the pool before the others are
+considered. The sampler generates midpoint and perturbation candidates per local pair,
+then scores the complete pool using:
 
 ```text
 score =
@@ -363,7 +382,7 @@ logging:
 ```
 
 Numeric parameters participate in normalized boundary distance. Categorical parameters
-must have the same value on a SAFE/UNSAFE pair; otherwise that pair is not interpolated.
+must have the same value on a configured label pair; otherwise that pair is not interpolated.
 `runtime.permutation` is not supported because adaptive sample N depends on results from
 the preceding samples.
 

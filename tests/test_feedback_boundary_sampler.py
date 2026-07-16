@@ -82,6 +82,146 @@ def test_feedback_sampler_falls_back_to_exploration_without_both_labels() -> Non
 
 
 @pytest.mark.parametrize(
+    ("boundary_pair", "left_result", "right_result"),
+    [
+        (
+            ["safe", "invalid"],
+            SampleResult(params={}, status="finished", test_outcome="success"),
+            SampleResult(params={}, status="finished", test_outcome="invalid"),
+        ),
+        (
+            ["unsafe", "invalid"],
+            SampleResult(params={}, status="finished", test_outcome="fail"),
+            SampleResult(params={}, status="finished", test_outcome="invalid"),
+        ),
+    ],
+)
+def test_feedback_sampler_supports_configured_semantic_boundary(
+    boundary_pair,
+    left_result,
+    right_result,
+) -> None:
+    sampler = FeedbackBoundarySampler(
+        _space(),
+        total_samples=1,
+        initial_samples=0,
+        boundary_pairs=[boundary_pair],
+        candidates_per_pair=1,
+        exploration_ratio=0,
+        perturbation_scale=0,
+    )
+    left = Sample(params={"agent_speed": 2.0, "cut_in_distance": 4.0})
+    right = Sample(params={"agent_speed": 8.0, "cut_in_distance": 16.0})
+    sampler.update(left, left_result)
+    sampler.update(right, right_result)
+
+    boundary = sampler.next()
+
+    assert boundary is not None
+    assert boundary.params == {
+        "agent_speed": 5.0,
+        "cut_in_distance": 10.0,
+    }
+
+
+def test_feedback_sampler_round_robins_candidates_across_boundary_pairs() -> None:
+    sampler = FeedbackBoundarySampler(
+        _space(),
+        total_samples=3,
+        initial_samples=0,
+        boundary_pairs=[
+            ["safe", "unsafe"],
+            ["safe", "invalid"],
+            ["unsafe", "invalid"],
+        ],
+        boundary_candidate_count=3,
+        candidates_per_pair=1,
+        exploration_ratio=0,
+        perturbation_scale=0,
+    )
+    observations = [
+        (
+            Sample(params={"agent_speed": 0.0, "cut_in_distance": 0.0}),
+            SampleResult(params={}, status="finished", test_outcome="success"),
+        ),
+        (
+            Sample(params={"agent_speed": 4.0, "cut_in_distance": 0.0}),
+            SampleResult(params={}, status="finished", test_outcome="fail"),
+        ),
+        (
+            Sample(params={"agent_speed": 8.0, "cut_in_distance": 0.0}),
+            SampleResult(params={}, status="finished", test_outcome="invalid"),
+        ),
+    ]
+    for sample, result in observations:
+        sampler.update(sample, result)
+
+    candidates = sampler._boundary_candidates()
+
+    assert [candidate.label_pair for candidate in candidates] == [
+        (FeedbackLabel.SAFE, FeedbackLabel.UNSAFE),
+        (FeedbackLabel.SAFE, FeedbackLabel.INVALID),
+        (FeedbackLabel.UNSAFE, FeedbackLabel.INVALID),
+    ]
+
+
+def test_feedback_sampler_explores_until_a_configured_pair_is_active() -> None:
+    sampler = FeedbackBoundarySampler(
+        _space(),
+        total_samples=2,
+        initial_samples=0,
+        boundary_pairs=[["safe", "invalid"]],
+        exploration_ratio=0,
+    )
+    safe = Sample(params={"agent_speed": 0.0, "cut_in_distance": 0.0})
+    unsafe = Sample(params={"agent_speed": 10.0, "cut_in_distance": 20.0})
+    sampler.update(
+        safe,
+        SampleResult(params=safe.params, status="finished", test_outcome="success"),
+    )
+    sampler.update(
+        unsafe,
+        SampleResult(params=unsafe.params, status="finished", test_outcome="fail"),
+    )
+
+    assert sampler._has_boundary_labels() is False
+    assert sampler.next() is not None
+
+
+@pytest.mark.parametrize(
+    ("boundary_pairs", "message"),
+    [
+        ([], "non-empty"),
+        ([["safe"]], "exactly two"),
+        ([["safe", "safe"]], "different labels"),
+        ([["safe", "error"]], "cannot include ERROR"),
+        ([["safe", "unknown"]], "unsupported"),
+        ([["safe", "unsafe"], ["unsafe", "safe"]], "duplicate"),
+    ],
+)
+def test_feedback_sampler_rejects_invalid_boundary_pairs(boundary_pairs, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        FeedbackBoundarySampler(
+            _space(),
+            total_samples=4,
+            boundary_pairs=boundary_pairs,
+        )
+
+
+def test_feedback_sampler_requires_candidate_capacity_for_each_boundary_pair() -> None:
+    with pytest.raises(ValueError, match="at least the number"):
+        FeedbackBoundarySampler(
+            _space(),
+            total_samples=4,
+            boundary_pairs=[
+                ["safe", "unsafe"],
+                ["safe", "invalid"],
+            ],
+            boundary_candidate_count=1,
+        )
+
+
+@pytest.mark.parametrize(
     ("result", "expected"),
     [
         (

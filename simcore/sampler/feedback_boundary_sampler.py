@@ -28,6 +28,14 @@ class FeedbackLabel(StrEnum):
     ERROR = "ERROR"
 
 
+DEFAULT_BOUNDARY_PAIRS = ((FeedbackLabel.SAFE, FeedbackLabel.UNSAFE),)
+SUPPORTED_BOUNDARY_LABELS = {
+    FeedbackLabel.SAFE,
+    FeedbackLabel.UNSAFE,
+    FeedbackLabel.INVALID,
+}
+
+
 @dataclass(frozen=True)
 class FeedbackRecord:
     sample: Sample
@@ -40,6 +48,7 @@ class FeedbackRecord:
 class BoundaryCandidate:
     params: dict[str, Any]
     pair_distance: float
+    label_pair: tuple[FeedbackLabel, FeedbackLabel]
 
 
 class FeedbackBoundarySampler(Sampler):
@@ -61,10 +70,12 @@ class FeedbackBoundarySampler(Sampler):
         exploration_ratio: float = 0.2,
         random_seed: int | None = None,
         duplicate_tolerance: float = 1e-6,
+        boundary_pairs: list[list[str]] | None = None,
         output_parameters: Any = None,
         **_: Any,
     ):
         super().__init__(parameter_space, output_parameters=output_parameters)
+        effective_boundary_pairs = self._parse_boundary_pairs(boundary_pairs)
         effective_initial_samples = (
             min(8, int(total_samples)) if initial_samples is None else int(initial_samples)
         )
@@ -81,6 +92,7 @@ class FeedbackBoundarySampler(Sampler):
             perturbation_scale=perturbation_scale,
             exploration_ratio=exploration_ratio,
             duplicate_tolerance=duplicate_tolerance,
+            boundary_pair_count=len(effective_boundary_pairs),
         )
         self._total_samples = int(total_samples)
         self._initial_samples = effective_initial_samples
@@ -98,6 +110,7 @@ class FeedbackBoundarySampler(Sampler):
         self._perturbation_scale = float(perturbation_scale)
         self._exploration_ratio = float(exploration_ratio)
         self._duplicate_tolerance = float(duplicate_tolerance)
+        self._boundary_pairs = effective_boundary_pairs
         self._rng = random.Random(random_seed)
         self._numeric_bounds = tuple(self._numeric_bounds_for(spec) for spec in self.specs)
         if not any(
@@ -195,12 +208,48 @@ class FeedbackBoundarySampler(Sampler):
         return max(self._total_samples - self._emitted, 0)
 
     def _boundary_params(self) -> dict[str, Any] | None:
-        safe = [record for record in self.history if record.label == FeedbackLabel.SAFE]
-        unsafe = [record for record in self.history if record.label == FeedbackLabel.UNSAFE]
-        pairs = self._opposite_label_pairs(safe, unsafe)
+        candidates = self._boundary_candidates()
+        if not candidates:
+            return None
+        return self._select_boundary_candidate(candidates).params
+
+    def _boundary_candidates(self) -> list[BoundaryCandidate]:
+        records_by_label = {
+            label: [record for record in self.history if record.label == label]
+            for label in SUPPORTED_BOUNDARY_LABELS
+        }
+        streams = []
+        for label_pair in self._boundary_pairs:
+            left = records_by_label[label_pair[0]]
+            right = records_by_label[label_pair[1]]
+            if left and right:
+                streams.append(iter(self._candidate_stream(label_pair, left, right)))
+
         candidates: list[BoundaryCandidate] = []
-        for distance, safe_record, unsafe_record in pairs:
-            midpoint = self._midpoint(safe_record.sample.params, unsafe_record.sample.params)
+        active_streams = streams
+        while active_streams and len(candidates) < self._boundary_candidate_count:
+            next_streams = []
+            for stream in active_streams:
+                candidate = self._next_unique_candidate(stream, candidates)
+                if candidate is None:
+                    continue
+                candidates.append(candidate)
+                next_streams.append(stream)
+                if len(candidates) >= self._boundary_candidate_count:
+                    break
+            active_streams = next_streams
+        return candidates
+
+    def _candidate_stream(
+        self,
+        label_pair: tuple[FeedbackLabel, FeedbackLabel],
+        left_records: list[FeedbackRecord],
+        right_records: list[FeedbackRecord],
+    ):
+        for distance, left_record, right_record in self._opposite_label_pairs(
+            left_records, right_records
+        ):
+            midpoint = self._midpoint(left_record.sample.params, right_record.sample.params)
             if midpoint is None:
                 continue
             pair_candidates = [midpoint]
@@ -208,32 +257,39 @@ class FeedbackBoundarySampler(Sampler):
                 self._perturb(midpoint) for _ in range(self._candidates_per_pair - 1)
             )
             for params in pair_candidates:
-                if self._is_duplicate(params) or self._contains_candidate(candidates, params):
-                    continue
-                candidates.append(BoundaryCandidate(params=params, pair_distance=distance))
-                if len(candidates) >= self._boundary_candidate_count:
-                    break
-            if len(candidates) >= self._boundary_candidate_count:
-                break
+                yield BoundaryCandidate(
+                    params=params,
+                    pair_distance=distance,
+                    label_pair=label_pair,
+                )
 
-        if not candidates:
-            return None
-        return self._select_boundary_candidate(candidates).params
+    def _next_unique_candidate(
+        self,
+        stream,
+        candidates: list[BoundaryCandidate],
+    ) -> BoundaryCandidate | None:
+        for candidate in stream:
+            if self._is_duplicate(candidate.params) or self._contains_candidate(
+                candidates, candidate.params
+            ):
+                continue
+            return candidate
+        return None
 
     def _opposite_label_pairs(
         self,
-        safe: list[FeedbackRecord],
-        unsafe: list[FeedbackRecord],
+        left_records: list[FeedbackRecord],
+        right_records: list[FeedbackRecord],
     ) -> list[tuple[float, FeedbackRecord, FeedbackRecord]]:
         pairs: dict[tuple[int, int], tuple[float, FeedbackRecord, FeedbackRecord]] = {}
-        for safe_index, safe_record in enumerate(safe):
-            neighbors = self._nearest_opposites(safe_record, unsafe)
-            for distance, unsafe_index, unsafe_record in neighbors:
-                pairs[(safe_index, unsafe_index)] = (distance, safe_record, unsafe_record)
-        for unsafe_index, unsafe_record in enumerate(unsafe):
-            neighbors = self._nearest_opposites(unsafe_record, safe)
-            for distance, safe_index, safe_record in neighbors:
-                pairs[(safe_index, unsafe_index)] = (distance, safe_record, unsafe_record)
+        for left_index, left_record in enumerate(left_records):
+            neighbors = self._nearest_opposites(left_record, right_records)
+            for distance, right_index, right_record in neighbors:
+                pairs[(left_index, right_index)] = (distance, left_record, right_record)
+        for right_index, right_record in enumerate(right_records):
+            neighbors = self._nearest_opposites(right_record, left_records)
+            for distance, left_index, left_record in neighbors:
+                pairs[(left_index, right_index)] = (distance, left_record, right_record)
         return sorted(pairs.values(), key=lambda item: item[0])
 
     def _nearest_opposites(
@@ -338,7 +394,7 @@ class FeedbackBoundarySampler(Sampler):
 
     def _has_boundary_labels(self) -> bool:
         labels = {record.label for record in self.history}
-        return FeedbackLabel.SAFE in labels and FeedbackLabel.UNSAFE in labels
+        return any(left in labels and right in labels for left, right in self._boundary_pairs)
 
     def _normalize(self, params: dict[str, Any]) -> tuple[float | None, ...]:
         normalized = []
@@ -490,6 +546,43 @@ class FeedbackBoundarySampler(Sampler):
         return parsed
 
     @staticmethod
+    def _parse_boundary_pairs(
+        raw_pairs: Any,
+    ) -> tuple[tuple[FeedbackLabel, FeedbackLabel], ...]:
+        if raw_pairs is None:
+            return DEFAULT_BOUNDARY_PAIRS
+        if not isinstance(raw_pairs, list | tuple) or not raw_pairs:
+            raise ValueError("boundary_pairs must be a non-empty list of label pairs")
+
+        parsed = []
+        seen = set()
+        for raw_pair in raw_pairs:
+            if not isinstance(raw_pair, list | tuple) or len(raw_pair) != 2:
+                raise ValueError("boundary_pairs entries must contain exactly two labels")
+            labels = []
+            for raw_label in raw_pair:
+                try:
+                    label = FeedbackLabel(str(raw_label).strip().upper())
+                except ValueError as exc:
+                    allowed = ", ".join(
+                        label.value.lower() for label in sorted(SUPPORTED_BOUNDARY_LABELS)
+                    )
+                    raise ValueError(
+                        f"boundary_pairs label {raw_label!r} is unsupported; expected: {allowed}"
+                    ) from exc
+                if label not in SUPPORTED_BOUNDARY_LABELS:
+                    raise ValueError("boundary_pairs cannot include ERROR")
+                labels.append(label)
+            if labels[0] == labels[1]:
+                raise ValueError("boundary_pairs entries must contain two different labels")
+            canonical = tuple(sorted(labels))
+            if canonical in seen:
+                raise ValueError(f"duplicate boundary pair: {labels[0].value}/{labels[1].value}")
+            seen.add(canonical)
+            parsed.append((labels[0], labels[1]))
+        return tuple(parsed)
+
+    @staticmethod
     def _validate_config(**config) -> None:
         if int(config["total_samples"]) <= 0:
             raise ValueError("total_samples must be positive")
@@ -499,6 +592,10 @@ class FeedbackBoundarySampler(Sampler):
             raise ValueError("initial_sampler must be one of: lhs, random, sobol")
         if int(config["boundary_candidate_count"]) <= 0:
             raise ValueError("boundary_candidate_count must be positive")
+        if int(config["boundary_candidate_count"]) < int(config["boundary_pair_count"]):
+            raise ValueError(
+                "boundary_candidate_count must be at least the number of boundary_pairs"
+            )
         if int(config["opposite_neighbors"]) <= 0:
             raise ValueError("opposite_neighbors must be positive")
         if int(config["candidates_per_pair"]) <= 0:
